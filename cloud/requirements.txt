@@ -1,0 +1,6 @@
+# Day 4A extras on top of the Day 1 conda env
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.7
+requests>=2.31
+transformers>=4.45.0

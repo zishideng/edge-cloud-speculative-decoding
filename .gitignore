@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+
+# 模型权重与缓存(见 configs/models.yaml,按需下载)
+models/
+*.gguf
+*.safetensors
+hf-cache/
+
+# 运行时产物
+results/**/*.json
+results/**/*.csv
+results/**/*.log
+figs/
+logs/
+*.ready
+nohup.out

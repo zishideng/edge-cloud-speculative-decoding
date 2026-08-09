@@ -1,0 +1,4 @@
+requests>=2.31
+tqdm>=4.66
+pyyaml>=6.0
+jetson-stats>=4.2   # jtop,功耗采样;非 Jetson 上会自动降级为 no-op

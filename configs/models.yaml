@@ -1,0 +1,83 @@
+# models.yaml — model-pair registry for edge-cloud SD.
+#
+# Each entry defines a draft (edge, llama.cpp GGUF) + target (cloud, vLLM HF)
+# pair that share a tokenizer. Select with --model-config <name> in the bench
+# scripts, or MODEL_CONFIG=<name> for the shell launchers.
+#
+# CRITICAL: draft and target MUST share the same tokenizer / vocab_size, or
+# speculative decoding produces garbage. The bench scripts validate this at
+# startup (see common model_config.validate_vocab). Add a new pair only after
+# confirming vocab match (see add_model.md).
+
+llama3:
+  description: "Llama-3.1-8B target + Llama-3.2-1B Q4_K_M draft (paper default)"
+  target: meta-llama/Llama-3.1-8B-Instruct
+  draft_hf_repo: bartowski/Llama-3.2-1B-Instruct-GGUF
+  draft_gguf: Llama-3.2-1B-Instruct-Q4_K_M.gguf
+  eos_id: 128009          # <|eot_id|>
+  vocab_size: 128256
+  max_model_len: 4096
+
+qwen25:
+  description: "Qwen2.5-32B target + Qwen2.5-0.5B Q4_K_M draft (Qwen family, NON-reasoning, 1 GPU)"
+  target: Qwen/Qwen2.5-32B-Instruct
+  draft_hf_repo: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+  draft_gguf: qwen2.5-0.5b-instruct-q4_k_m.gguf        # ~491 MB (official Qwen repo, lowercase name)
+  eos_id: 151645          # <|im_end|>
+  vocab_size: 151936
+  max_model_len: 4096
+  tp: 1
+  dtype: bfloat16
+  gpu_memory_utilization: 0.92
+  strict_vocab: false      # 0.5B (151936) vs 32B (152064) embedding padding differs; tokenizer identical
+  # NON-reasoning model: no <think>, no llama.cpp reasoning-parser issue, short outputs (fast).
+
+# ---- New large-target pairs (ACM TECS generalization study) ----
+# Both fit a SINGLE H200 (80 GB) and keep the edge draft ~1B so the 8 GB Orin
+# Nano does not OOM. No tensor parallelism needed.
+
+qwen3:
+  description: "Qwen3-32B target + Qwen3-0.6B Q8_0 draft (Qwen family, 1 GPU)"
+  target: Qwen/Qwen3-32B
+  draft_hf_repo: Qwen/Qwen3-0.6B-GGUF
+  draft_gguf: Qwen3-0.6B-Q8_0.gguf                     # ~639 MB; the OFFICIAL Qwen repo ships only Q8_0 (no Q4_K_M)
+  eos_id: 151645          # <|im_end|>
+  vocab_size: 151936
+  max_model_len: 4096
+  # 32B bf16 ~64 GB fits one 80 GB H200; KV-cache room is tight -> raise util.
+  tp: 1
+  dtype: bfloat16
+  gpu_memory_utilization: 0.92
+  strict_vocab: false      # 0.6B vs 32B embedding may pad to different vocab_size; tokenizer identical
+  # NOTE: Qwen3 defaults to "thinking" mode (<think>...</think>), which inflates
+  # output length and changes acceptance. For SD throughput runs disable it
+  # (enable_thinking=False / append "/no_think") so results are comparable.
+
+deepseek:
+  description: "DeepSeek-R1-Distill-Qwen 32B target + 1.5B Q4_K_M draft (1 GPU)"
+  target: deepseek-ai/DeepSeek-R1-Distill-Qwen-32B
+  draft_hf_repo: bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF
+  draft_gguf: DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf  # ~1.1 GB; verify exact filename
+  eos_id: 151643          # <|end_of_sentence|> (DeepSeek)
+  vocab_size: 151936      # 1.5B reports 151936; 32B may pad to 152064 -> see strict_vocab
+  max_model_len: 4096
+  tp: 1
+  dtype: bfloat16
+  gpu_memory_utilization: 0.92
+  # The 1.5B and 32B distills share the SAME tokenizer (token ids match) but
+  # their embedding vocab_size may differ (151936 vs 152064). That is a padding
+  # difference, not a tokenizer mismatch, so SD is still correct -> downgrade the
+  # vocab check from fatal to a warning:
+  strict_vocab: false
+  # NOTE: R1-Distill models are reasoning models and emit long <think> chains;
+  # outputs are long, so compare throughput within this pair, not across pairs.
+
+# template — copy, fill, verify vocab before use:
+# mymodel:
+#   description: ""
+#   target: org/Target-Model
+#   draft_hf_repo: org/Draft-Model-GGUF
+#   draft_gguf: draft-q4_k_m.gguf
+#   eos_id: 0
+#   vocab_size: 0
+#   max_model_len: 4096
