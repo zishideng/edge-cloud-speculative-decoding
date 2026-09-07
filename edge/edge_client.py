@@ -139,28 +139,16 @@ class EdgeClient:
         add_generation_prompt: bool = True,
     ) -> str:
         """Use llama-server's chat template by hitting /apply-template."""
-        # Newer llama.cpp has /apply-template; if absent fall back to manual.
-        try:
-            r = self._session.post(
-                f"{self.draft_url}/apply-template",
-                json={"messages": messages, "add_generation_prompt": add_generation_prompt},
-                timeout=10,
-            )
-            if r.status_code == 200:
-                return r.json().get("prompt", "")
-        except Exception:
-            pass
-        # Fallback: hand-roll Llama-3 chat format
-        # <|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nXXX<|eot_id|>...
-        parts = ["<|begin_of_text|>"]
-        for m in messages:
-            parts.append(
-                f"<|start_header_id|>{m['role']}<|end_header_id|>\n\n"
-                f"{m['content']}<|eot_id|>"
-            )
-        if add_generation_prompt:
-            parts.append("<|start_header_id|>assistant<|end_header_id|>\n\n")
-        return "".join(parts)
+        r = self._session.post(
+            f"{self.draft_url}/apply-template",
+            json={"messages": messages, "add_generation_prompt": add_generation_prompt},
+            timeout=10,
+        )
+        r.raise_for_status()
+        prompt = r.json().get("prompt")
+        if not prompt:
+            raise RuntimeError("llama-server returned no chat template prompt")
+        return prompt
 
     # -------- draft step ---------------------------------------------------- #
     def draft(
@@ -181,7 +169,7 @@ class EdgeClient:
             "return_tokens": True,
             "cache_prompt": True,
             "n_probs": 1,
-            "seed": 42,
+            "seed": getattr(self, 'seed', 42),
             # Stop at Llama-3 turn boundaries so we don't keep generating
             # extra assistant turns after the first complete answer.
             "stop": ["<|eot_id|>", "<|end_of_text|>"],
@@ -210,9 +198,7 @@ class EdgeClient:
             or [t.get("id") for t in data.get("completion_probabilities", []) if "id" in t]
         )
         if not token_ids:
-            # Last-ditch: re-tokenize the content string
-            content = data.get("content", "")
-            token_ids = self.tokenize(content, add_special=False)
+            raise RuntimeError("Draft response has no token IDs; tokenization cannot substitute for generated IDs")
 
         # Logprobs (optional for greedy, kept for T>0 mode)
         logprobs = []
@@ -242,6 +228,8 @@ class EdgeClient:
         no_think: bool = False,
     ) -> Tuple[str, GenerationMetrics]:
         """Full SD loop. Returns (assistant_text, metrics)."""
+        if temperature != 0 or gamma < 1 or max_tokens < 1:
+            raise ValueError("Require temperature=0 and positive gamma/max_tokens")
         # 1. Build prompt and tokenize once.
         # Qwen3 defaults to "thinking" mode; appending /no_think to the last user
         # turn disables it. (DeepSeek-R1 distills ignore this and always reason.)
@@ -266,8 +254,7 @@ class EdgeClient:
                 or props.get("eos_token_id")
             )
             if eos_id is None:
-                # Hardcode for Llama-3 family
-                eos_id = 128009
+                raise ValueError("Model EOS ID unavailable; supply eos_id explicitly")
 
         gen_start = len(prompt_ids)   # everything after this is "generated"
         metrics = GenerationMetrics()
@@ -281,7 +268,7 @@ class EdgeClient:
             draft_ms = (time.perf_counter() - t0) * 1000.0
 
             if not draft_ids:
-                break  # draft model produced nothing; abort
+                raise RuntimeError("Draft backend returned no tokens")
 
             # If server returned fewer than requested, it hit a stop string
             # (e.g. <|eot_id|>). Mark a stop so we exit after applying.
@@ -303,9 +290,11 @@ class EdgeClient:
             )
 
             # ---- 3. Apply accepted + bonus --------------------------------
-            ids.extend(vr.accepted_ids)
-            if vr.bonus_id is not None:
-                ids.append(vr.bonus_id)
+            produced = vr.accepted_ids + ([] if vr.bonus_id is None else [vr.bonus_id])
+            produced = produced[:remaining]
+            if eos_id in produced:
+                produced = produced[:produced.index(eos_id)+1]
+            ids.extend(produced)
 
             # ---- 4. Update metrics ----------------------------------------
             metrics.n_rounds += 1
@@ -325,13 +314,11 @@ class EdgeClient:
             })
 
             # ---- 5. Stop conditions ---------------------------------------
-            if vr.should_stop:
-                break
-            if short_draft_stop:
+            if vr.should_stop or eos_id in produced:
                 break
             # Safety: if 0 accepted and no bonus, we're stuck — break
             if vr.n_accepted == 0 and vr.bonus_id is None:
-                break
+                raise RuntimeError("Verifier returned neither accepted nor correction token")
 
         metrics.total_output_tokens = len(ids) - gen_start
         metrics.wall_time_s = time.perf_counter() - t_start

@@ -2,7 +2,7 @@
 
 Loads Llama-3.1-8B once, exposes a FastAPI app on a TCP port. The Jetson
 hits POST /verify with (context, draft tokens) and gets back accept/reject
-decisions per the Leviathan 2023 algorithm.
+strict or quality-constrained relaxed prefix decisions.
 
 Design notes:
 - Single-worker, single-request-at-a-time. SD is inherently sequential
@@ -19,7 +19,10 @@ import argparse
 import logging
 import math
 import os
-import random
+import asyncio
+from fastapi.concurrency import run_in_threadpool
+from common.acceptance import accept_prefix
+from common.experiment_config import load_config, validate
 import socket
 import sys
 import time
@@ -45,10 +48,11 @@ log = logging.getLogger("verify_server")
 class VerifyRequest(BaseModel):
     prompt_ids: List[int]          # full context: system+user+assistant-so-far
     draft_ids: List[int]           # γ draft tokens proposed by Jetson
-    draft_logprobs: Optional[List[float]] = None  # per-position log p(x_i),
-                                                  # required for T>0 mode
+    draft_logprobs: Optional[List[float]] = None  # compatibility telemetry; strict/relaxed verification uses target probabilities
     temperature: float = 0.0
-    eos_id: Optional[int] = None   # if provided, accepting this stops chain
+    eos_id: Optional[int] = None   # accepting this stops chain
+    policy: Optional[dict] = None
+    experiment_queue_ms: float = 0.0
 
 
 class VerifyResponse(BaseModel):
@@ -58,6 +62,8 @@ class VerifyResponse(BaseModel):
     bonus_is_correction: bool      # True = bonus came from rejection re-sample
     should_stop: bool              # if EOS produced
     verify_time_ms: float
+    cloud_queue_ms: float = 0.0
+    cloud_verify_ms: float
     metadata: dict                 # extra info for the controller
 
 
@@ -98,82 +104,13 @@ STATE = {
 # --------------------------------------------------------------------------- #
 # Core verify algorithm
 # --------------------------------------------------------------------------- #
-def verify_greedy(target_topk_per_pos, draft_ids):
-    """T=0 path. Accept while draft matches target's argmax.
-
-    target_topk_per_pos: list[dict[token_id -> logprob]], one per draft position
-    Returns (n_accepted, correction_id_or_None).
-    """
-    n_acc = 0
-    correction = None
-    for i, x_i in enumerate(draft_ids):
-        # vLLM gave us top-K at this position; pick the actual argmax
-        topk = target_topk_per_pos[i]
-        if not topk:
-            # vLLM didn't return logprobs here (shouldn't happen if request OK).
-            # Conservative: reject everything from here.
-            break
-        argmax_id = max(topk.items(), key=lambda kv: kv[1])[0]
-        if argmax_id == x_i:
-            n_acc += 1
-        else:
-            correction = argmax_id
-            break
-    return n_acc, correction
-
-
-def verify_sampling(target_topk_per_pos, draft_ids, draft_logprobs):
-    """T>0 path. Standard Leviathan accept/reject.
-
-    Each step:
-      r ~ U(0,1)
-      accept iff r < min(1, q(x_i) / p(x_i))
-      where q is target prob, p is draft prob.
-
-    Re-sampling on reject from max(0, q - p) is approximated here by
-    sampling from `q` restricted to the top-K vLLM returned. Good enough
-    for our paper; if the reviewer asks we can add full vocab support.
-    """
-    n_acc = 0
-    correction = None
-    for i, x_i in enumerate(draft_ids):
-        topk = target_topk_per_pos[i]
-        # Probability target assigns to the draft token (0 if outside top-K)
-        q_lp = topk.get(x_i, -float("inf"))
-        # Draft side log-prob the edge sent us
-        p_lp = draft_logprobs[i] if draft_logprobs and i < len(draft_logprobs) else q_lp
-        # Acceptance ratio in log-space: log(q/p) = q_lp - p_lp
-        log_ratio = q_lp - p_lp
-        accept_prob = min(1.0, math.exp(log_ratio)) if log_ratio < 700 else 1.0
-        if random.random() < accept_prob:
-            n_acc += 1
-        else:
-            # Re-sample correction from top-K of target (approx).
-            # Convert logprobs → probs, normalize.
-            ids = list(topk.keys())
-            ps = [math.exp(topk[t]) for t in ids]
-            s = sum(ps)
-            if s > 0:
-                ps = [p / s for p in ps]
-                correction = random.choices(ids, weights=ps, k=1)[0]
-            break
-    return n_acc, correction
-
-
-def sample_bonus(target_topk_per_pos, temperature):
-    """Sample one bonus token from the position AFTER all draft tokens.
-
-    target_topk_per_pos[-1] is at position len(draft); but vLLM only returned
-    prompt_logprobs for prompt positions. The bonus token comes from the
-    one max_tokens=1 we asked for separately — see caller.
-    """
-    raise NotImplementedError("bonus is handled by the caller using sampled_id from vLLM")
-
-
 # --------------------------------------------------------------------------- #
 # App
 # --------------------------------------------------------------------------- #
 app = FastAPI(title="EdgeCloud SD verify server")
+MODEL_LOCK = asyncio.Lock()
+DEFAULT_CONFIG = load_config()
+
 
 
 @app.get("/health")
@@ -199,7 +136,23 @@ def info():
 
 
 @app.post("/verify", response_model=VerifyResponse)
-def verify(req: VerifyRequest):
+async def verify(req: VerifyRequest):
+    if not math.isfinite(req.experiment_queue_ms) or not 0 <= req.experiment_queue_ms <= 60000:
+        raise HTTPException(400, 'Invalid injected experiment queue delay')
+    queued = time.perf_counter()
+    async with MODEL_LOCK:
+        if req.experiment_queue_ms:
+            deadline = time.perf_counter() + req.experiment_queue_ms / 1000
+            # Windows event-loop timers may wake before a perf_counter deadline.
+            while (remaining := deadline - time.perf_counter()) > 0:
+                await asyncio.sleep(remaining)
+        queue_ms = (time.perf_counter() - queued) * 1000
+        result = await run_in_threadpool(_verify, req)
+        result.cloud_queue_ms = queue_ms
+        return result
+
+
+def _verify(req: VerifyRequest):
     """Run verify on a single draft chunk."""
     t0 = time.perf_counter()
     llm = STATE["llm"]
@@ -211,7 +164,7 @@ def verify(req: VerifyRequest):
 
     n_ctx = len(req.prompt_ids)
     n_draft = len(req.draft_ids)
-    if n_draft == 0:
+    if n_draft == 0 or n_ctx == 0:
         raise HTTPException(400, "draft_ids must be non-empty")
 
     full = req.prompt_ids + req.draft_ids
@@ -221,13 +174,30 @@ def verify(req: VerifyRequest):
     # Ask vLLM for logprobs at every prompt position + one more sampled token
     # NOTE: prompt_logprobs returns logprobs over the *given* prompt;
     # since the prompt includes draft_ids, we get target's view of those.
-    K = 20  # top-K logprobs to retrieve; large enough for top-K resample
+    if req.temperature != 0:
+        raise HTTPException(400, "Only temperature=0 is supported; relaxed acceptance is lossy")
+    policy = req.policy or {'strategy': 'strict', 'k': 1, 'spent': 0.0}
+    try:
+        config = validate(dict(DEFAULT_CONFIG, **policy.get('config', {})))
+        if config['K_MAX'] > DEFAULT_CONFIG['K_MAX']:
+            raise ValueError('Requested K_MAX exceeds server startup configuration; restart with matching --experiment-config')
+        if config['SEED'] != DEFAULT_CONFIG['SEED']:
+            raise ValueError('Client/server SEED mismatch; use the same experiment configuration')
+        strategy = policy['strategy']
+        if strategy not in ('strict', 'fixed', 'adaptive'):
+            raise ValueError('Invalid acceptance strategy')
+        k = 1 if strategy == 'strict' else policy['k']
+        if type(k) is not int or not config['K_MIN'] <= k <= config['K_MAX']:
+            raise ValueError('Invalid K')
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    K = config['K_MAX']
     sp = SamplingParams(
         temperature=req.temperature,
         max_tokens=1,
         prompt_logprobs=K,
         logprobs=K,
-        seed=42,
+        seed=DEFAULT_CONFIG['SEED'],
     )
     out = llm.generate(
         prompts=[{"prompt_token_ids": full}],
@@ -249,46 +219,34 @@ def verify(req: VerifyRequest):
     for i in range(n_ctx, n_ctx + n_draft):
         if i < len(prompt_lp) and prompt_lp[i]:
             target_topk_per_pos.append(
-                {tid: lp.logprob for tid, lp in prompt_lp[i].items()}
+                {tid: {'logprob': lp.logprob, 'rank': lp.rank} for tid, lp in prompt_lp[i].items()}
             )
         else:
             target_topk_per_pos.append({})
 
-    # Run accept/reject
-    if req.temperature == 0.0:
-        n_acc, correction = verify_greedy(target_topk_per_pos, req.draft_ids)
-    else:
-        n_acc, correction = verify_sampling(
-            target_topk_per_pos, req.draft_ids, req.draft_logprobs
-        )
-
-    accepted_ids = req.draft_ids[:n_acc]
-
-    # Bonus token (when all draft accepted) is the one vLLM sampled.
-    # Correction token (when rejected) comes from our resample above.
-    if n_acc == n_draft:
+    try:
+        accepted_ids, correction, decisions, spent = accept_prefix(
+            target_topk_per_pos, req.draft_ids, k=k, config=config,
+            spent=policy.get('spent', 0.0), eos_id=req.eos_id)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    n_acc = len(accepted_ids)
+    stopped_in_prefix = req.eos_id is not None and req.eos_id in accepted_ids
+    if stopped_in_prefix:
+        bonus_id = None
+    elif n_acc == n_draft:
         sampled = o.outputs[0].token_ids
-        bonus_id = sampled[0] if sampled else None
-        bonus_is_correction = False
+        if not sampled:
+            raise HTTPException(500, 'Target produced no bonus token')
+        bonus_id = sampled[0]
     else:
         bonus_id = correction
-        bonus_is_correction = True
-
-    should_stop = (
-        req.eos_id is not None
-        and bonus_id is not None
-        and bonus_id == req.eos_id
-    )
-
-    # Metadata for the Jetson-side controller (entropy, acceptance signal)
-    md = {
-        "draft_logprobs_target": [
-            target_topk_per_pos[i].get(req.draft_ids[i], None) if i < len(target_topk_per_pos) else None
-            for i in range(n_draft)
-        ],
-        "n_draft": n_draft,
-        "n_ctx": n_ctx,
-    }
+    bonus_is_correction = correction is not None
+    should_stop = stopped_in_prefix or (req.eos_id is not None and bonus_id == req.eos_id)
+    md = {'decisions': decisions, 'quality_spent': spent, 'n_draft': n_draft,
+          'n_ctx': n_ctx, 'queue_scope': 'application model lock; excludes HTTP ingress',
+          'draft_logprobs_target': [d.get(t, {}).get('logprob') for d,t in zip(target_topk_per_pos, req.draft_ids)]}
+    elapsed = (time.perf_counter() - t0) * 1000.0
 
     return VerifyResponse(
         accepted_ids=accepted_ids,
@@ -296,7 +254,8 @@ def verify(req: VerifyRequest):
         bonus_id=bonus_id,
         bonus_is_correction=bonus_is_correction,
         should_stop=should_stop,
-        verify_time_ms=(time.perf_counter() - t0) * 1000.0,
+        verify_time_ms=elapsed,
+        cloud_verify_ms=elapsed,
         metadata=md,
     )
 
@@ -306,11 +265,16 @@ def verify(req: VerifyRequest):
 # can let user know.
 # --------------------------------------------------------------------------- #
 @app.post("/generate", response_model=GenerateResponse)
-def generate(req: GenerateRequest):
+async def generate(req: GenerateRequest):
+    # Explicit quality-reference endpoint, never selected by SD error handling.
+    async with MODEL_LOCK:
+        return await run_in_threadpool(_generate, req)
+
+
+def _generate(req: GenerateRequest):
     """H200 autoregressively generates up to max_tokens from prompt_ids.
 
-    Used for round-0 bootstrap and cloud-only fallback. Pure target
-    generation, no draft involved.
+    Explicit strict cloud quality reference; never invoked by the SD loop.
     """
     import time as _t
     from vllm import SamplingParams
@@ -319,10 +283,12 @@ def generate(req: GenerateRequest):
     if llm is None:
         raise HTTPException(503, "model not loaded yet")
 
+    if req.temperature != 0 or req.max_tokens < 1 or not req.prompt_ids:
+        raise HTTPException(400, 'Strict reference requires nonempty prompt, positive max_tokens, temperature=0')
     sp = SamplingParams(
-        temperature=req.temperature,
+        temperature=0.0,
         max_tokens=req.max_tokens,
-        seed=42,
+        seed=DEFAULT_CONFIG['SEED'],
     )
     if req.eos_id is not None:
         sp.stop_token_ids = [req.eos_id]
@@ -357,7 +323,8 @@ def _startup():
         gpu_memory_utilization=args.gpu_memory_utilization,
         max_model_len=args.max_model_len,
         tensor_parallel_size=args.tensor_parallel_size,
-        seed=42,
+        max_logprobs=DEFAULT_CONFIG['K_MAX'],
+        seed=DEFAULT_CONFIG['SEED'],
     )
     # Only pass quantization when set; None means "use the checkpoint as-is".
     if args.quantization and args.quantization.lower() != "none":
@@ -401,7 +368,10 @@ def main():
                          "for large targets that are tight on KV-cache room).")
     ap.add_argument("--ready-file", default=None,
                     help="if given, write hostname\\tport here when model is loaded")
+    ap.add_argument("--experiment-config", default=None)
     args = ap.parse_args()
+    global DEFAULT_CONFIG
+    DEFAULT_CONFIG = load_config(args.experiment_config)
     STATE["args"] = args
 
     log.info("Starting verify server on %s:%d", args.host, args.port)

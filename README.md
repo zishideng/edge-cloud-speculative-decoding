@@ -4,6 +4,10 @@ Acceptance-aware edge-cloud speculative decoding: a quantized draft model runs o
 edge device (Jetson Orin Nano, llama.cpp), a full-precision target model verifies in the
 cloud (vLLM).
 
+Top-k 策略：边缘端贪心解码及本地模拟验证器已显式使用 `top_k=1`；详细范围与检查记录见 [Top-k 策略检查记录](docs/TOP_K_AUDIT.md)。
+
+上述记录保留改造前的检查结论；当前新增的 Top-K 宽松接受与联合控制见 [实验系统说明](docs/EXPERIMENT_SYSTEM.md)。
+
 The repo is split by **where the code runs**:
 
 ```
@@ -49,12 +53,12 @@ edge-cloud-speculative-decoding/
 | 文件 | 作用 |
 |---|---|
 | `edge_client.py` | 投机解码主循环(基线实现) |
-| `edge_client_smart.py` | ★ bootstrap + acceptance-aware fallback(论文主方法) |
+| `edge_client_smart.py` | Quality-constrained Top-K and mathematical window control |
 | `edge_client_prefetch.py` | 异步预取(**负面结果**,−25%) |
 | `edge_client_warmup.py` | warmup γ 调度(**弱结果**,+1%) |
 | `edge_client_c1.py` | 熵自适应 γ(**负面结果**,−4%) |
 | `edge_client_b5.py` | SLO 路由 |
-| `verifier.py` / `verifier_ext.py` | 调用云端 `/verify` `/generate` 的客户端 |
+| `verifier.py` | Cloud verification HTTP client and latency measurements |
 | `energy_profiler.py` | Jetson 功耗采样(jtop / INA3221) |
 | `bench_*.py` | 每个实验一个 benchmark 入口 |
 | `scripts/start_draft_server.sh` | 启动 llama.cpp draft server |
@@ -137,10 +141,9 @@ python -m edge.bench_edge_cloud --verifier remote --remote-url $CLOUD_URL \
     --model-config llama3 --gamma 3 --n 50 \
     --data common/data/gsm8k_test_50.jsonl --out results/B3_remote_g3.json
 
-# ★ 主方法:acceptance-aware fallback
-python -m edge.bench_smart --bootstrap 0 --fallback-k 3 --fallback-thresh 0.65 \
-    --gamma 2 --task gsm8k --data common/data/gsm8k_test_50.jsonl \
-    --n 30 --profile-energy --out results/S_fb_t065_gsm8k.json
+# New baseline / joint controller suite
+python -m edge.bench_smart --mode simulate
+# Real services: --mode real --config configs/my-experiment.json
 ```
 
 ### 3. 分析
@@ -148,7 +151,7 @@ python -m edge.bench_smart --bootstrap 0 --fallback-k 3 --fallback-thresh 0.65 \
 不需要 GPU,只读 `results/`:
 
 ```bash
-RESULTS_DIR=results FIG_DIR=figs python -m analysis.make_figures
+python -m analysis.make_figures results/<timestamp>
 python -m analysis.make_results_index results --out-md results/RESULTS_INDEX.md
 ```
 
@@ -174,3 +177,7 @@ python -m analysis.make_results_index results --out-md results/RESULTS_INDEX.md
 - **Edge**:Jetson Orin Nano 8GB,JetPack 6,llama.cpp b5050 (sm_87)
 - **Cloud**:H200 / RTX 3080,vLLM
 - 模型对见 `configs/models.yaml`
+
+## Quality-constrained experiments
+
+Run `./run_all_experiments.ps1` (Windows) or `bash run_all_experiments.sh` (Linux). Default mode is synthetic simulation. See [experiment system](docs/EXPERIMENT_SYSTEM.md) for real services, configuration and limitations. Legacy C1, prefetch, energy and SLO experiments remain independent of the new synchronous controller.

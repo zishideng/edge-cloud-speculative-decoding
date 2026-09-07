@@ -1,0 +1,11 @@
+{
+  "EXPERIMENT_DEFAULTS": false,
+  "K_MIN": null, "K_MAX": null, "K_INITIAL": null,
+  "QUALITY_BUDGET": null, "MAX_LOGPROB_REGRET": null,
+  "MIN_PROBABILITY_RATIO": null, "TARGET_ACCEPTANCE_RATE": null,
+  "QUALITY_EVAL_INTERVAL": null, "QUALITY_WINDOW_SIZE": null,
+  "GAMMA_MIN": null, "GAMMA_MAX": null, "GAMMA_INITIAL": null,
+  "ESTIMATION_WINDOW_SIZE": null, "WINDOW_UPDATE_INTERVAL": null,
+  "WINDOW_CHANGE_STEP": null, "WINDOW_HYSTERESIS": null,
+  "DRAFT_URL": null, "CLOUD_URL": null, "MODEL_PAIR": null
+}

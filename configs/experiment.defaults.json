@@ -1,0 +1,33 @@
+{
+  "EXPERIMENT_DEFAULTS": true,
+  "K_MIN": 1, "K_MAX": 4, "K_INITIAL": 1,
+  "QUALITY_BUDGET": 0.5, "MAX_LOGPROB_REGRET": 0.2,
+  "MIN_PROBABILITY_RATIO": 0.82, "TARGET_ACCEPTANCE_RATE": 0.9,
+  "QUALITY_EVAL_INTERVAL": 4, "QUALITY_WINDOW_SIZE": 32,
+  "GAMMA_MIN": 1, "GAMMA_MAX": 8, "GAMMA_INITIAL": 2,
+  "ESTIMATION_WINDOW_SIZE": 32, "WINDOW_UPDATE_INTERVAL": 2,
+  "WINDOW_CHANGE_STEP": 1, "WINDOW_HYSTERESIS": 0.05,
+  "MIN_ESTIMATION_SAMPLES": 4,
+  "K_UPDATE_INTERVAL": 2, "K_CHANGE_STEP": 1,
+  "MIN_TOP1_CONFIDENCE": 0.35,
+  "BUDGET_TIGHTEN_FRACTION": 0.8, "RISK_TIGHTEN_THRESHOLD": 0.7,
+  "RTT_HIGH_MS": 50, "LATENCY_JUMP_RATIO": 2,
+  "REQUEST_TIMEOUT_S": 60, "SEED": 42,
+  "DRAFT_URL": null, "CLOUD_URL": null, "MODEL_PAIR": null,
+  "TASK": "gsm8k", "DATASET": "common/data/gsm8k_test_50.jsonl",
+  "N_REQUESTS": 4, "MAX_TOKENS": 48, "FIXED_K": 2,
+  "GAMMA_SWEEP": [1, 2, 4, 8], "K_SWEEP": [1, 2, 3, 4],
+  "REPEATS": 2, "VERBOSE_TOKENS": false, "VERBOSE_ROUNDS": false,
+  "SIM_DRAFT_TOKEN_MS": 2, "SIM_VERIFY_FIXED_MS": 3,
+  "SIM_VERIFY_TOKEN_MS": 0.3, "SIM_DRAFT_ACCURACY": 0.65,
+  "SIM_TOP1_PROBABILITY": 0.45, "SIM_TOP2_PROBABILITY": 0.40,
+  "NETWORK_SCENARIOS": {
+    "low": {"rtt_ms": 2, "jitter_ms": 0},
+    "medium": {"rtt_ms": 30, "jitter_ms": 0},
+    "high": {"rtt_ms": 100, "jitter_ms": 0},
+    "jitter": {"rtt_ms": 30, "jitter_ms": 25},
+    "bandwidth": {"rtt_ms": 30, "jitter_ms": 0, "bandwidth_mbps": 1},
+    "burst": {"rtt_ms": 5, "jitter_ms": 0, "burst_at": 4, "burst_ms": 100},
+    "queue": {"rtt_ms": 10, "jitter_ms": 0, "queue_ms": 20, "queue_jitter_ms": 15}
+  }
+}

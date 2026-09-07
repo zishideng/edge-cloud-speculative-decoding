@@ -84,7 +84,7 @@ echo "  max_model_len=$MAXLEN  tp=$TP  dtype=$DTYPE  quant=$QUANT  gpu_util=$GPU
 echo "============================================================"
 
 # Start server. The --ready-file lets us announce when the model is loaded.
-python "$SCRIPT_DIR/verify_server.py" \
+python -m cloud.verify_server \
     --target "$TARGET" \
     --host 0.0.0.0 \
     --port "$PORT" \

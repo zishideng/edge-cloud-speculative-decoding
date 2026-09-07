@@ -115,7 +115,7 @@ class EdgeClientC1(EdgeClient):
             eos_id = (
                 props.get("default_generation_settings", {}).get("eos_token_id")
                 or props.get("eos_token_id")
-                or 128009  # Llama-3 fallback
+                or 128009  # Llama-3 alternative
             )
 
         gen_start = len(prompt_ids)

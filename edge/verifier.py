@@ -8,6 +8,8 @@ RemoteVerifier: HTTP POST to the verify_server running on H200.
 from __future__ import annotations
 
 import time
+import json
+from common.metrics import latency_breakdown
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 
@@ -92,7 +94,7 @@ class MockVerifier(VerifierBase):
         )
         if tokens:
             return int(tokens[0])
-        # Fallback: detokenize from content (slow path)
+        # Alternative: detokenize from content (slow path)
         content = data.get("content", "")
         if content:
             # /tokenize endpoint to get IDs back
@@ -162,9 +164,11 @@ class MockVerifier(VerifierBase):
 class RemoteVerifier(VerifierBase):
     """HTTP POST to /verify on the H200 verify_server."""
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, timeout: float = 60):
         # url like "http://foscsmlprd03.its.auckland.ac.nz:9090"
         self.base = url.rstrip("/")
+        self.timeout = timeout
+        self.policy = None
         self._session = requests.Session()
         # Long-running connection keeps TCP alive between rounds.
         self._session.headers.update({"Connection": "keep-alive"})
@@ -187,13 +191,24 @@ class RemoteVerifier(VerifierBase):
         if eos_id is not None:
             body["eos_id"] = eos_id
 
+        if self.policy is not None:
+            body['policy'] = self.policy
+        body['experiment_queue_ms'] = getattr(self, 'experiment_queue_ms', 0.0)
         t0 = time.perf_counter()
-        r = self._session.post(f"{self.base}/verify", json=body, timeout=60)
+        wire = json.dumps(body, allow_nan=False).encode('utf-8')
+        serialize_ms = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        r = self._session.post(f"{self.base}/verify", data=wire,
+                               headers={'Content-Type': 'application/json'}, timeout=self.timeout)
         wall_ms = (time.perf_counter() - t0) * 1000.0
         r.raise_for_status()
-        data = r.json()
+        t0 = time.perf_counter()
+        data = json.loads(r.content)
+        deserialize_ms = (time.perf_counter() - t0) * 1000
 
-        server_ms = data.get("verify_time_ms", 0.0)
+        server_ms = data['cloud_verify_ms']
+        timing = latency_breakdown(wall_ms, serialize_ms, deserialize_ms,
+                                   data['cloud_queue_ms'], server_ms, len(wire), len(r.content))
         return VerifyResult(
             accepted_ids=data["accepted_ids"],
             n_accepted=data["n_accepted"],
@@ -201,8 +216,8 @@ class RemoteVerifier(VerifierBase):
             bonus_is_correction=data.get("bonus_is_correction", False),
             should_stop=data.get("should_stop", False),
             verify_time_ms=server_ms,
-            network_time_ms=max(0.0, wall_ms - server_ms),
-            metadata=data.get("metadata", {}) | {"mode": "remote", "wall_ms": wall_ms},
+            network_time_ms=timing['network_rtt_ms'],
+            metadata=data.get("metadata", {}) | {"mode": "remote", "wall_ms": wall_ms, 'timing': timing},
         )
 
     def health(self) -> Dict[str, Any]:

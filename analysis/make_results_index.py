@@ -13,10 +13,8 @@ import json, sys, os, glob, argparse, csv
 # Fields we try to pull from each result's summary (any subset may exist)
 FIELDS = [
     "tag", "task", "method", "mode", "power_mode", "schedule",
-    "gamma", "fallback_thresh", "fallback_k", "bootstrap",
     "n_samples", "accuracy", "acceptance",
     "agg_tok_s", "aggregate_tokens_per_second", "tokens_per_second",
-    "avg_latency_s", "fallback_rate", "joules_per_token", "avg_watts",
 ]
 
 # Categorize by filename prefix → experiment group
@@ -34,10 +32,6 @@ def categorize(fn):
         ("W_warmup", "Warmup: schedule"),
         ("P_sync", "Prefetch: sync baseline"),
         ("P_prefetch", "Failed: prefetch async"),
-        ("S_base", "Fallback: base"),
-        ("S_boot", "Fallback: +bootstrap"),
-        ("S_fb", "Fallback: +fallback"),
-        ("S_full", "Fallback: full system"),
     ]
     for prefix, label in rules:
         if b.startswith(prefix):
@@ -96,7 +90,6 @@ def main():
         row["accept"]= fmt(get(s, "acceptance"))
         row["lat_s"] = fmt(get(s, "avg_latency_s"))
         row["J/tok"] = fmt(get(s, "joules_per_token"))
-        row["fb%"]   = fmt(get(s, "fallback_rate"))
         row["n"]     = fmt(get(s, "n_samples"))
         rows.append(row)
 
@@ -104,7 +97,7 @@ def main():
     rows.sort(key=lambda r: (r.get("group", "zzz"), r["file"]))
 
     # Markdown
-    cols = ["file", "group", "tok/s", "acc", "accept", "lat_s", "J/tok", "fb%", "n"]
+    cols = ["file", "group", "tok/s", "acc", "accept", "lat_s", "J/tok", "n"]
     with open(args.out_md, "w") as f:
         f.write(f"# Results Index — `{args.results_dir}`\n\n")
         f.write(f"{len(files)} JSON files.\n\n")

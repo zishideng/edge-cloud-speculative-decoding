@@ -1,7 +1,7 @@
 # RUNBOOK — extra model pairs (`qwen3`, `deepseek`)
 
 Goal: reproduce the paper's core measurements on two more edge–cloud pairs so
-the generalization claim (cold-start, task-dependence, fallback gain) holds
+the generalization claim (cold-start and task-dependence) holds
 beyond the Llama-3.1-8B/1B pair, **and** report metrics that line up with
 Venkatesha et al. 2025 (the early-exit FSD paper, `cited_pdfs/5014_...pdf`).
 
@@ -179,7 +179,7 @@ almost always **thinking mode still on** (see §7).
 
 ## 5. The experiment ladder (swap `qwen3` ⇄ `deepseek` and the filenames)
 
-Only `bench_edge_cloud.py` and `bench_smart.py` take `--model-config`.
+`bench_edge_cloud.py` takes `--model-config`; `bench_smart.py` takes `--config` with `MODEL_PAIR`.
 
 **(a) Baseline + acceptance + cold-start + τ.** `bench_edge_cloud.py` now writes
 `tau_tokens_per_verify` (the Venkatesha τ) into the summary, plus per-round
@@ -202,68 +202,11 @@ for T in humaneval_30 mtbench_30; do
 done
 ```
 
-**(c) Fallback — the main result.** `bench_smart.py` emits `agg_tok_s`,
-`acceptance`, `fallback_rate`, and (with `--profile-energy`) edge J/tok:
+**(c) Current quality-constrained experiments.**
 
-```bash
-for T in gsm8k humaneval mtbench; do
-  DATA=$( [ $T = gsm8k ] && echo gsm8k_test_50 || ([ $T = humaneval ] && echo humaneval_30 || echo mtbench_30) )
-  python bench_smart.py --model-config qwen3 --gamma 2 --task $T \
-      --bootstrap 0 --fallback-k 0 --n 30 --profile-energy \
-      --data ../edge/data/${DATA}.jsonl --out ../results/S_base_qwen3_${T}.json
-  python bench_smart.py --model-config qwen3 --gamma 2 --task $T \
-      --bootstrap 0 --fallback-k 3 --fallback-thresh 0.65 --n 30 --profile-energy \
-      --data ../edge/data/${DATA}.jsonl --out ../results/S_fb_qwen3_${T}.json
-done
-```
-
-**(d) Threshold sweep (optional, GSM8K):**
-
-```bash
-for TAU in 0.55 0.65 0.70 0.75; do
-  python bench_smart.py --model-config qwen3 --gamma 2 --task gsm8k \
-      --fallback-k 3 --fallback-thresh $TAU --n 30 --profile-energy \
-      --data ../edge/data/gsm8k_test_50.jsonl \
-      --out ../results/S_fb_t$(echo $TAU|tr -d .)_qwen3_gsm8k.json
-done
-```
-
----
-
-## 6. Comparison with Venkatesha et al. 2025 (their Table 6)
-
-Their Table 6 uses Jetson Nano + A100/RTX with Vicuna-68M/-160M FP drafts and
-Vicuna/Llama2 7B–13B targets, and reports four metrics. Map to ours:
-
-| Their metric              | Our equivalent                                   | Source |
-|---------------------------|--------------------------------------------------|--------|
-| **Avg Tokens τ**          | `tau_tokens_per_verify`                           | `B3_<pair>_g2.json` summary |
-| **Speedup AR → SD**       | cloud-AR tok/s ÷ edge–cloud-SD tok/s             | §6.1 (below) ÷ `B3_<pair>_g2.json` |
-| **Speedup SD → FSD**      | our fallback gain = `S_fb` tok/s ÷ `S_base` tok/s | `S_*_<pair>_*.json` |
-| Cache miss rate / Avg EE  | **N/A** — early-exit-specific, we have no exits   | — |
-
-Shared benchmark: **MT-Bench** (both papers use it) — quote that row for the
-cleanest apples-to-apples on τ.
-
-The honest framing: their tiny **FP** 68M draft + early exits gives AR→SD ≈
-1.3× (SD beats AR). Our **quantized ~1B** draft makes the edge draft the
-bottleneck, so AR→SD < 1 (SD is slower than cloud-AR) — which is exactly the
-gap our fallback targets. Reporting τ side-by-side shows acceptance is
-comparable (~2–3 tokens/verify); the difference is *where the time goes*, not
-how well drafts are accepted.
-
-### 6.1 Cloud-AR baseline per target (run on the H200, gives the AR→SD numerator)
-
-```bash
-ssh $CLOUD && cd /data/zliu604
-python cloud/bench_one.py --method ar \
-    --target Qwen/Qwen3-32B \
-    --data /data/zliu604/specdecode-day1/data/mtbench_30.jsonl \
-    --tag AR_qwen3 --out results/AR_qwen3_mtbench.json
-# and for deepseek: --target deepseek-ai/DeepSeek-R1-Distill-Qwen-32B
-```
-
-Then: `Speedup AR→SD = AR tok/s (this file) ÷ edge–cloud-SD tok/s (B3_<pair>_g2_mtbench.json)`.
+Use `python -m edge.bench_smart --mode real --config configs/my-experiment.json`
+from the repository root. Set `MODEL_PAIR`, `DRAFT_URL`, `CLOUD_URL` and quality/window parameters.
+The A/B/C/Proposed comparisons are described in [EXPERIMENT_SYSTEM.md](EXPERIMENT_SYSTEM.md).
 
 ---
 
@@ -283,7 +226,7 @@ cd ~/specdecode/src && python make_results_index.py   # -> results/RESULTS_INDEX
 
 Headline numbers per pair: round-0 vs steady acceptance (`rounds` in
 `B3_<pair>_g2.json`), `tau_tokens_per_verify`, per-task `acceptance_rate`,
-and base-vs-+FB `agg_tok_s` / `fallback_rate` / `joules_per_token`.
+and the new A/B/C/Proposed latency, throughput and quality tables.
 
 ---
 

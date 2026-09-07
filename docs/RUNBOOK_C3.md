@@ -78,9 +78,9 @@ After each cell finishes, sanity-check:
 - `energy_samples > 100` (jtop actually reported)
 - `avg_watts` matches power mode (7W mode → ~7-9W, 15W → ~12-15W, MAXN → ~15-25W)
 
-If `avg_watts = 0`, jtop integration broken — see fallback below.
+If `avg_watts = 0`, jtop integration broken — see alternative below.
 
-## jtop fallback (if profiler reports 0 watts)
+## jtop alternative (if profiler reports 0 watts)
 ```python
 # Quick test
 python3 -c "from jtop import jtop; j=jtop(); j.start(); import time; time.sleep(1); print(j.power); j.close()"

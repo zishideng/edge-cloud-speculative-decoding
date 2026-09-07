@@ -85,11 +85,8 @@ python bench_edge_cloud.py --verifier remote --remote-url http://localhost:9090 
     --data ../edge/data/gsm8k_test_50.jsonl \
     --out ../results/B3_mypair_g2.json
 
-# (3) fallback experiment (if baseline acceptance is reasonable)
-python bench_smart.py --model-config mypair \
-    --fallback-k 3 --fallback-thresh 0.65 --gamma 2 --task gsm8k \
-    --data ../edge/data/gsm8k_test_50.jsonl --n 30 --profile-energy \
-    --out ../results/S_fb_mypair_gsm8k.json
+# (3) Set MODEL_PAIR, DRAFT_URL, CLOUD_URL in your experiment JSON
+python -m edge.bench_smart --mode real --config configs/my-experiment.json
 ```
 
 ## Diagnosing a bad pair
@@ -102,10 +99,8 @@ python bench_smart.py --model-config mypair \
 - **Garbage text** → almost always tokenizer mismatch that slipped past
   validation; re-run Step 1.
 
-## Which bench scripts support --model-config
-`bench_edge_cloud.py` and `bench_smart.py` are wired (validation + eos_id).
-For `bench_warmup.py`, `bench_prefetch.py`, `bench_c1.py`, `bench_b5.py`,
-`bench_c3_energy.py`: they default to the Llama-3 eos (128009). To use them with
-a non-Llama pair, either add the same three lines (see the diff in bench_smart.py:
-load_model_config -> eos_id -> pass eos_id into generate), or pass the right data
-and rely on llama.cpp /props auto-detection of eos.
+## Current experiment entry points
+`edge.bench_edge_cloud` keeps its `--model-config` interface.
+The new `edge.bench_smart` uses `--config` with `MODEL_PAIR`, and validates both services.
+Legacy warmup, prefetch, C1, B5 and energy experiments remain independent.
+See [EXPERIMENT_SYSTEM.md](EXPERIMENT_SYSTEM.md).

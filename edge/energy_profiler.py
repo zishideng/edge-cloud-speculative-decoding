@@ -53,7 +53,7 @@ class EnergyProfiler:
                     if isinstance(tot, dict):
                         tot_mw = tot.get("power") or tot.get("avg")
                 if tot_mw is None:
-                    # Fallback: sum rail entries
+                    # Alternative: sum rail entries
                     rails = p.get("rail", p) if isinstance(p, dict) else {}
                     tot_mw = sum(
                         (r.get("power", 0) if isinstance(r, dict) else 0)
