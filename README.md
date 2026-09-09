@@ -87,14 +87,14 @@ export HF_TOKEN=hf_xxxx
 
 # 直接跑(无 SLURM)
 python -m cloud.verify_server \
-    --target meta-llama/Llama-3.1-8B-Instruct \
+    --bartowski/Meta-Llama-3.1-8B-Instruct-GGUF \
     --host 0.0.0.0 --port 9090 --max-model-len 4096
 
 # 或提交到 SLURM
 MODEL_CONFIG=llama3 sbatch cloud/scripts/serve_slurm.sbatch
 
 # 自检
-python -m cloud.tools.smoke_test --host localhost --port 9090
+python -m cloud.tools.smoke_test --host 172.23.119.64 --port 9090
 ```
 
 云端单机 baseline(需先停掉 verify server,它占着显存):
@@ -129,7 +129,7 @@ curl -s localhost:8080/health
 连到云端(同局域网直接用 IP,跨网段才需要 SSH 隧道):
 
 ```bash
-export CLOUD_URL=http://<cloud-ip>:9090
+export CLOUD_URL=http://172.23.83.231:9090
 curl -s $CLOUD_URL/health
 ```
 
