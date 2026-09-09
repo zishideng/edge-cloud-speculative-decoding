@@ -5,11 +5,27 @@ import warnings
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REQUIRED = ('K_MIN K_MAX K_INITIAL QUALITY_BUDGET MAX_LOGPROB_REGRET '
-            'MIN_PROBABILITY_RATIO TARGET_ACCEPTANCE_RATE QUALITY_EVAL_INTERVAL '
-            'QUALITY_WINDOW_SIZE GAMMA_MIN GAMMA_MAX GAMMA_INITIAL '
-            'ESTIMATION_WINDOW_SIZE WINDOW_UPDATE_INTERVAL WINDOW_CHANGE_STEP '
-            'WINDOW_HYSTERESIS').split()
+# 这里只声明必填参数名称，不在此处赋值。
+# 实际值填写在 configs/my-experiment.json，例如："K_MAX": 4。
+# 以下注释中的数值仅为实验示例，不代表最终推荐参数。
+REQUIRED = [
+    'K_MIN',                   # K 下限；必须为 1。示例："K_MIN": 1
+    'K_MAX',                   # K 上限。示例："K_MAX": 4
+    'K_INITIAL',               # 初始 K。示例："K_INITIAL": 1
+    'QUALITY_BUDGET',          # 单请求累计 regret 预算（nats）。示例：0.5
+    'MAX_LOGPROB_REGRET',      # 单 token regret 上限（nats）。示例：0.2
+    'MIN_PROBABILITY_RATIO',   # 候选概率 / top-1 概率下限。示例：0.82
+    'TARGET_ACCEPTANCE_RATE',  # 目标接受率。示例：0.9
+    'QUALITY_EVAL_INTERVAL',   # 质量评估间隔（轮）。示例：4
+    'QUALITY_WINDOW_SIZE',     # 质量统计窗口（token 决策数）。示例：32
+    'GAMMA_MIN',               # 草稿窗口下限（token）。示例：1
+    'GAMMA_MAX',               # 草稿窗口上限（token）。示例：8
+    'GAMMA_INITIAL',           # 初始草稿窗口（token）。示例：2
+    'ESTIMATION_WINDOW_SIZE',  # 延迟/接受率统计窗口（轮）。示例：32
+    'WINDOW_UPDATE_INTERVAL',  # 草稿窗口更新间隔（轮）。示例：2
+    'WINDOW_CHANGE_STEP',      # 每次窗口最大变化量（token）。示例：1
+    'WINDOW_HYSTERESIS',       # 更新窗口所需的相对吞吐收益。示例：0.05（5%）
+]
 
 
 def validate(c):
