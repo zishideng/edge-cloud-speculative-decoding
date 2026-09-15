@@ -2,7 +2,7 @@
 import json
 import time
 from dataclasses import asdict
-from common.model_config import load_model_config, validate_pair
+from common.model_config import load_model_config, validate_pair, get_draft_vocab
 from common.quality import task_quality
 from common.simulation import network_condition
 from edge.edge_client_smart import SmartEdgeClient
@@ -47,6 +47,7 @@ class LiveExperiment:
         self.client=SmartEdgeClient(c['DRAFT_URL'],c)
         self.remote=RemoteVerifier(c['CLOUD_URL'],c['REQUEST_TIMEOUT_S'])
         self.model=load_model_config(c['MODEL_PAIR'])
+        get_draft_vocab(self.client, required=True)
         self.remote.health()
         if not validate_pair(self.client,self.remote,self.model):
             raise RuntimeError('Model vocabulary validation could not be confirmed')

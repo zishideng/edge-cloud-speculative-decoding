@@ -80,7 +80,7 @@ class EdgeClient:
         except Exception:
             return None
         for path in (("default_generation_settings", "n_vocab"),
-                     ("n_vocab",), ("model", "n_vocab")):
+                     ("n_vocab",), ("model", "n_vocab"), ("model_meta", "n_vocab")):
             d = p
             ok = True
             for k in path:

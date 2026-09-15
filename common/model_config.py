@@ -64,17 +64,23 @@ def load_model_config(name: str, models_yaml: Optional[str] = None) -> Dict[str,
     return cfg
 
 
-def get_draft_vocab(client) -> Optional[int]:
+def get_draft_vocab(client, required: bool = False) -> Optional[int]:
     """Read the draft model's vocab size from llama.cpp /props, if exposed."""
     try:
         props = client.props()
-    except Exception:
+    except Exception as exc:
+        if required:
+            raise RuntimeError(
+                f"Cannot read draft service {getattr(client, 'draft_url', '<DRAFT_URL>')}/props: "
+                f"{type(exc).__name__}: {exc}. Check llama-server startup, HOST/PORT and network access."
+            ) from exc
         return None
     # llama.cpp exposes vocab under a few possible keys depending on version
     for path in (
         ("default_generation_settings", "n_vocab"),
         ("n_vocab",),
         ("model", "n_vocab"),
+        ("model_meta", "n_vocab"),
     ):
         d = props
         ok = True
@@ -84,8 +90,17 @@ def get_draft_vocab(client) -> Optional[int]:
             else:
                 ok = False
                 break
-        if ok and isinstance(d, int):
+        if ok and type(d) is int and d > 0:
             return d
+    if required:
+        keys = sorted(props) if isinstance(props, dict) else type(props).__name__
+        raise RuntimeError(
+            f"Draft service {getattr(client, 'draft_url', '<DRAFT_URL>')}/props responded, "
+            f"but no positive integer n_vocab was found. Response keys: {keys}. "
+            "This is a metadata compatibility issue, not proof the model failed to load. "
+            "Provide the /props and /v1/models responses and llama-server version; "
+            "vocabulary validation has not been bypassed."
+        )
     return None
 
 

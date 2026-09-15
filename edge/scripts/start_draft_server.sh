@@ -22,6 +22,8 @@ MODELS_DIR="$WORK_ROOT/models"
 # --- model registry: pair name -> GGUF filename (edit filenames here only) ---
 declare -A GGUF=(
   [llama]="Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+  [llama3]="Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+  [llama3_awq]="Llama-3.2-1B-Instruct-Q4_K_M.gguf"
   [qwen3]="Qwen3-0.6B-Q8_0.gguf"
   [qwen25]="qwen2.5-0.5b-instruct-q4_k_m.gguf"
   [deepseek]="DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
