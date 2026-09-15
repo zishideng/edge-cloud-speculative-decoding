@@ -7,5 +7,7 @@
   "GAMMA_MIN": null, "GAMMA_MAX": null, "GAMMA_INITIAL": null,
   "ESTIMATION_WINDOW_SIZE": null, "WINDOW_UPDATE_INTERVAL": null,
   "WINDOW_CHANGE_STEP": null, "WINDOW_HYSTERESIS": null,
-  "DRAFT_URL": null, "CLOUD_URL": null, "MODEL_PAIR": null
+  "DRAFT_URL": "http://172.23.83.231:8080",
+  "CLOUD_URL": "http://172.23.119.64:9090",
+  "MODEL_PAIR": "llama3_awq"
 }

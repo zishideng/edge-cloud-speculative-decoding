@@ -10,11 +10,20 @@
 # confirming vocab match (see add_model.md).
 
 llama3:
-  description: "Llama-3.1-8B target + Llama-3.2-1B Q4_K_M draft (paper default)"
-  target: meta-llama/Llama-3.1-8B-Instruct
+  description: "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF + bartowski/Llama-3.2-1B-Instruct-GGUF draft (paper default)"
+  target: bartowski/Meta-Llama-3.1-8B-Instruct-GGUF
   draft_hf_repo: bartowski/Llama-3.2-1B-Instruct-GGUF
   draft_gguf: Llama-3.2-1B-Instruct-Q4_K_M.gguf
   eos_id: 128009          # <|eot_id|>
+  vocab_size: 128256
+  max_model_len: 4096
+
+llama3_awq:
+  description: "Llama-3.1-8B-Instruct AWQ INT4 target + Llama-3.2-1B-Instruct Q4_K_M draft"
+  target: hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4
+  draft_hf_repo: bartowski/Llama-3.2-1B-Instruct-GGUF
+  draft_gguf: Llama-3.2-1B-Instruct-Q4_K_M.gguf
+  eos_id: 128009
   vocab_size: 128256
   max_model_len: 4096
 

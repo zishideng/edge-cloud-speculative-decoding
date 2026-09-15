@@ -87,7 +87,7 @@ export HF_TOKEN=hf_xxxx
 
 # 直接跑(无 SLURM)
 python -m cloud.verify_server \
-    --bartowski/Meta-Llama-3.1-8B-Instruct-GGUF \
+    --target hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4 \
     --host 0.0.0.0 --port 9090 --max-model-len 4096
 
 # 或提交到 SLURM
@@ -127,9 +127,10 @@ curl -s localhost:8080/health
 ```
 
 连到云端(同局域网直接用 IP,跨网段才需要 SSH 隧道):
-
+出现问题修复1.sudo ip route add 172.23.64.0/19 via 172.23.127.254 dev wlp37s0 src 172.23.119.64
+2.sudo ufw allow 9090/tcp
 ```bash
-export CLOUD_URL=http://172.23.83.231:9090
+export CLOUD_URL=http://172.23.119.64:9090
 curl -s $CLOUD_URL/health
 ```
 
