@@ -14,6 +14,13 @@ class DraftMetadataTests(unittest.TestCase):
                       {'model':{'n_vocab':128256}}, {'default_generation_settings':{'n_vocab':128256}}):
             self.assertEqual(get_draft_vocab(self.client(props),required=True),128256)
 
+    def test_v1_models_layout(self):
+        client = self.client({'endpoint_props': False})
+        client.models = Mock(return_value={
+            'data': [{'meta': {'n_vocab': 128256}}],
+        })
+        self.assertEqual(get_draft_vocab(client, required=True), 128256)
+
     def test_connection_error_preserves_cause(self):
         client=self.client({})
         client.props.side_effect=requests.ConnectionError('connection refused')

@@ -206,6 +206,18 @@ class RemoteVerifier(VerifierBase):
         data = json.loads(r.content)
         deserialize_ms = (time.perf_counter() - t0) * 1000
 
+        required = ['cloud_verify_ms', 'cloud_queue_ms']
+        missing = [key for key in required if key not in data]
+        if self.policy is not None:
+            metadata = data.get('metadata', {})
+            missing += ['metadata.' + key for key in ('decisions', 'quality_spent')
+                        if key not in metadata]
+        if missing:
+            raise RuntimeError(
+                f'Incompatible cloud verifier at {self.base}: missing {", ".join(missing)}. '
+                'Deploy the current cloud/verify_server.py and common/ modules on the cloud host '
+                'and restart the verify service. Legacy responses cannot support quality-controlled experiments.')
+
         server_ms = data['cloud_verify_ms']
         timing = latency_breakdown(wall_ms, serialize_ms, deserialize_ms,
                                    data['cloud_queue_ms'], server_ms, len(wire), len(r.content))
@@ -229,3 +241,13 @@ class RemoteVerifier(VerifierBase):
         r = self._session.get(f"{self.base}/info", timeout=5)
         r.raise_for_status()
         return r.json()
+
+    def experiment_info(self) -> Dict[str, Any]:
+        info = self.info()
+        if info.get('experiment_protocol_version') != 1:
+            raise RuntimeError(
+                f'Incompatible cloud verifier at {self.base}: experiment protocol version 1 required '
+                f'(reported {info.get("experiment_protocol_version", "legacy/unversioned")}). '
+                'Deploy the current cloud/verify_server.py and common/ modules on the cloud host '
+                'and restart the verify service before running --mode real.')
+        return info

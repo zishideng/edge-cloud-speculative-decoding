@@ -50,6 +50,31 @@ class IntegrationTests(unittest.TestCase):
         self.assertGreaterEqual(data['cloud_queue_ms'],0)
         self.assertGreater(data['cloud_verify_ms'],0)
 
+    def test_experiment_protocol_preflight(self):
+        verifier=RemoteVerifier('http://unused')
+        for info in ({'target_model':'legacy'}, {'experiment_protocol_version':2}):
+            with patch.object(verifier,'info',return_value=info):
+                with self.assertRaisesRegex(RuntimeError,'restart the verify service'):
+                    verifier.experiment_info()
+        with patch.object(verifier,'info',return_value={'experiment_protocol_version':1}):
+            self.assertEqual(verifier.experiment_info()['experiment_protocol_version'],1)
+        info=server.InfoResponse(target_model='test',vocab_size=10,n_layers=1,
+                                 max_model_len=32,hostname='test',port=9090,uptime_s=0)
+        self.assertEqual(info.experiment_protocol_version,1)
+
+    def test_legacy_response_has_actionable_error(self):
+        verifier=RemoteVerifier('http://unused')
+        response=requests.Response(); response.status_code=200
+        response._content=json.dumps({'verify_time_ms':1,'metadata':{}}).encode()
+        with patch.object(verifier._session,'post',return_value=response):
+            with self.assertRaisesRegex(RuntimeError,'missing cloud_verify_ms, cloud_queue_ms'):
+                verifier.verify([1],[2])
+        verifier.policy={'strategy':'adaptive'}
+        response._content=json.dumps({'cloud_verify_ms':1,'cloud_queue_ms':0,'metadata':{}}).encode()
+        with patch.object(verifier._session,'post',return_value=response):
+            with self.assertRaisesRegex(RuntimeError,'metadata.decisions, metadata.quality_spent'):
+                verifier.verify([1],[2])
+
     def test_temperature_and_invalid_policy(self):
         for extra in ({'temperature':1},{'policy':{'strategy':'unknown','k':1}}):
             self.assertEqual(self.client.post('/verify',json=dict(prompt_ids=[1],draft_ids=[2],**extra)).status_code,400)

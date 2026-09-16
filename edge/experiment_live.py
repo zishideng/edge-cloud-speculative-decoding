@@ -51,7 +51,7 @@ class LiveExperiment:
         self.remote.health()
         if not validate_pair(self.client,self.remote,self.model):
             raise RuntimeError('Model vocabulary validation could not be confirmed')
-        info=self.remote.info()
+        info=self.remote.experiment_info()
         if info['target_model'] != self.model['target']:
             raise ValueError('Running target does not match MODEL_PAIR target')
         self.info=info

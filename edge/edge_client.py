@@ -73,6 +73,12 @@ class EdgeClient:
             self._props = r.json()
         return self._props
 
+    def models(self) -> Dict[str, Any]:
+        """Read OpenAI-compatible model metadata from llama-server."""
+        r = self._session.get(f"{self.draft_url}/v1/models", timeout=10)
+        r.raise_for_status()
+        return r.json()
+
     def draft_n_vocab(self) -> Optional[int]:
         """Best-effort read of the draft model's vocab size from /props."""
         try:
@@ -91,6 +97,16 @@ class EdgeClient:
                     break
             if ok and isinstance(d, int):
                 return d
+        try:
+            models = self.models()
+        except requests.RequestException:
+            models = None
+        if isinstance(models, dict):
+            for model in models.get("data", []):
+                meta = model.get("meta") if isinstance(model, dict) else None
+                value = meta.get("n_vocab") if isinstance(meta, dict) else None
+                if type(value) is int and value > 0:
+                    return value
         return None
 
     def _diagnose_bad_completion(self, prompt_ids: List[int], r) -> None:

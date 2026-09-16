@@ -75,7 +75,7 @@ def get_draft_vocab(client, required: bool = False) -> Optional[int]:
                 f"{type(exc).__name__}: {exc}. Check llama-server startup, HOST/PORT and network access."
             ) from exc
         return None
-    # llama.cpp exposes vocab under a few possible keys depending on version
+    # llama.cpp exposes vocab under a few possible keys depending on version.
     for path in (
         ("default_generation_settings", "n_vocab"),
         ("n_vocab",),
@@ -92,6 +92,20 @@ def get_draft_vocab(client, required: bool = False) -> Optional[int]:
                 break
         if ok and type(d) is int and d > 0:
             return d
+    # Newer llama-server versions expose it in /v1/models instead of /props.
+    try:
+        models = client.models()
+    except Exception:
+        models = None
+    if isinstance(models, dict):
+        for model in models.get("data", []):
+            if not isinstance(model, dict):
+                continue
+            meta = model.get("meta")
+            if isinstance(meta, dict):
+                value = meta.get("n_vocab")
+                if type(value) is int and value > 0:
+                    return value
     if required:
         keys = sorted(props) if isinstance(props, dict) else type(props).__name__
         raise RuntimeError(

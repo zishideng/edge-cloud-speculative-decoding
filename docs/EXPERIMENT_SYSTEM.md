@@ -76,6 +76,10 @@ bash run_all_experiments.sh --mode real --config configs/my-experiment.json
 ```
 
 Windows 对应 `-Mode real -Config configs/my-experiment.json`。
+若启动时报 `experiment protocol version 1 required`，云端仍运行旧版验证服务。
+请将当前 `cloud/`、`common/` 和 `configs/` 同步到云端项目，使用原部署环境和模型启动参数
+重启 `python -m cloud.verify_server`；确认 `/info` 包含 `experiment_protocol_version: 1` 后重跑。
+旧服务缺少品质决策及独立排队计时，不能通过补零或重命名 `verify_time_ms` 获得有效实验结果。
 一键脚本连接现有服务，不创建远程资源、不自动提交集群任务。
 需要填写 `DRAFT_URL`、`CLOUD_URL`、`MODEL_PAIR`；云边使用相同 `SEED` 和兼容的 `K_MAX`。
 核验词表大小、目标模型名称；词表相等不是 tokenizer 完全一致的数学证明，还需模型对本身正确。

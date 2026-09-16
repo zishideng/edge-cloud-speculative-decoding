@@ -81,6 +81,7 @@ class GenerateResponse(BaseModel):
 
 
 class InfoResponse(BaseModel):
+    experiment_protocol_version: int = 1
     target_model: str
     vocab_size: int
     n_layers: int
