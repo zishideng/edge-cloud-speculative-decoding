@@ -16,6 +16,7 @@ Design notes:
   len(context) .. len(context)+len(draft)-1.
 """
 import argparse
+import importlib.metadata
 import logging
 import math
 import os
@@ -53,6 +54,7 @@ class VerifyRequest(BaseModel):
     eos_id: Optional[int] = None   # accepting this stops chain
     policy: Optional[dict] = None
     experiment_queue_ms: float = 0.0
+    diagnostics: bool = False
 
 
 class VerifyResponse(BaseModel):
@@ -78,6 +80,7 @@ class GenerateResponse(BaseModel):
     token_ids: List[int]           # generated token IDs
     should_stop: bool              # hit EOS
     generate_time_ms: float
+    stop_reason: str = "unknown"
 
 
 class InfoResponse(BaseModel):
@@ -89,6 +92,8 @@ class InfoResponse(BaseModel):
     hostname: str
     port: int
     uptime_s: float
+    runtime_versions: dict = {}
+    strict_diagnostics_available: bool = True
 
 
 # --------------------------------------------------------------------------- #
@@ -133,6 +138,7 @@ def info():
         hostname=socket.gethostname(),
         port=STATE["args"].port,
         uptime_s=time.time() - STATE["start_time"],
+        runtime_versions={name: importlib.metadata.version(name) for name in ("vllm", "torch")},
     )
 
 
@@ -247,6 +253,8 @@ def _verify(req: VerifyRequest):
     md = {'decisions': decisions, 'quality_spent': spent, 'n_draft': n_draft,
           'n_ctx': n_ctx, 'queue_scope': 'application model lock; excludes HTTP ingress',
           'draft_logprobs_target': [d.get(t, {}).get('logprob') for d,t in zip(target_topk_per_pos, req.draft_ids)]}
+    if req.diagnostics:
+        md["target_distributions"] = target_topk_per_pos
     elapsed = (time.perf_counter() - t0) * 1000.0
 
     return VerifyResponse(
@@ -308,6 +316,8 @@ def _generate(req: GenerateRequest):
         token_ids=tok_ids,
         should_stop=should_stop,
         generate_time_ms=(_t.perf_counter() - t0) * 1000.0,
+        stop_reason=("eos" if should_stop else "length" if getattr(gen, "finish_reason", None) == "length"
+                     or len(tok_ids) >= req.max_tokens else "server_stop"),
     )
 
 

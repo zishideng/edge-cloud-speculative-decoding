@@ -1,4 +1,4 @@
-﻿"""Repeatable PNG/SVG experiment plots. No hardcoded result directory."""
+"""Repeatable PNG/SVG experiment plots. No hardcoded result directory."""
 import argparse
 import json
 from pathlib import Path
@@ -49,7 +49,8 @@ def make_figures(directory):
           'Request end-to-end latency','Draft window gamma','Request latency (ms)')
     curve(ksweep,'configured_k',lambda r:r['relaxed_acceptance_rate'],'k_acceptance',
           'Quality-constrained fixed K','Configured K','Accepted / examined tokens')
-    quality_available=all(r['task_quality_drop'] is not None for r in records)
+    quality_available=(all(r['task_quality_drop'] is not None for r in records)
+                       and any((r.get('reference_quality') or 0) > 0 for r in records))
     qkey='task_quality_drop' if quality_available else 'token_difference_rate'
     qlabel='Task accuracy drop (fraction)' if quality_available else 'Token difference vs strict reference (proxy, not task quality)'
     curve(ksweep,'configured_k',lambda r:r[qkey],'k_quality',

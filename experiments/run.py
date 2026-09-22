@@ -17,6 +17,11 @@ from common.experiment_config import ROOT, load_config
 from common.metrics import LABELS, summary
 from common.quality import difference_rate
 from common.simulation import run_simulation
+from experiments.isolation import ServiceLocks, environment_snapshot
+
+
+class StrictConsistencyError(RuntimeError):
+    pass
 
 
 def write_json(path,data):
@@ -73,9 +78,15 @@ def main(argv=None):
     parser.add_argument('--verbose-rounds',action='store_true')
     args=parser.parse_args(argv)
     out=create_output(args.output_root)
-    failures=[]; records=[]; checks=[]
+    print(f'Artifacts: {out.resolve()}', flush=True)
+    failures=[]; records=[]; checks=[]; interrupted=False
+    service_locks=None
     try:
         c=load_config(args.config); c['VERBOSE_TOKENS'] |= args.verbose_tokens
+        if args.mode == 'real':
+            service_locks = ServiceLocks([c['DRAFT_URL'], c['CLOUD_URL']], str(out.resolve()))
+            service_locks.acquire()
+            write_json(out/'config/hardware_start.json', environment_snapshot())
         c['VERBOSE_ROUNDS'] |= args.verbose_rounds
         write_json(out/'config/resolved.json',c)
         environment={'mode':args.mode,'python':sys.version,'platform':platform.platform(),
@@ -87,7 +98,10 @@ def main(argv=None):
         write_json(out/'config/environment.json',environment)
         for name,cmd in [('static',[sys.executable,'-m','experiments.static_check']),
                          ('unit',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_core.py','-v']),
-                         ('integration',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_integration.py','-v'])]:
+                         ('integration',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_integration.py','-v']),
+                         ('p0',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_p0.py','-v']),
+                         ('metadata',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_draft_metadata.py','-v'])]:
+            print(f'Checking {name}...', flush=True)
             p=subprocess.run(cmd,capture_output=True,text=True,encoding='utf-8',errors='replace')
             (out/'logs'/f'{name}.log').write_text(p.stdout+p.stderr,encoding='utf-8')
             checks.append({'stage':name,'exit_code':p.returncode})
@@ -96,6 +110,7 @@ def main(argv=None):
             raise RuntimeError('Required checks failed; experiments not run')
         live=None
         if args.mode=='real':
+            print('Connecting to draft and cloud services...', flush=True)
             from edge.experiment_live import LiveExperiment
             live=LiveExperiment(c)
             write_json(out/'config/service_info.json',live.info)
@@ -107,6 +122,15 @@ def main(argv=None):
         write_json(out/'config/dataset.json',{'path':c['DATASET'],'sha256':hashlib.sha256(data).hexdigest(),
                                             'used_by_model':args.mode=='real',
                                             'note':'Synthetic mode uses request indices, not natural language content'})
+        if live:
+            print('Checking strict reference consistency and warming services...', flush=True)
+            try:
+                preflight = live.preflight(samples, out/'preflight')
+            except Exception:
+                checks.append({'stage':'strict_consistency','exit_code':1})
+                raise
+            checks.append({'stage':'strict_consistency','exit_code':0})
+            write_json(out/'config/preflight.json', preflight)
         jobs=[]
         for scenario_name,scenario in c['NETWORK_SCENARIOS'].items():
             for repeat in range(c['REPEATS']):
@@ -115,16 +139,24 @@ def main(argv=None):
                 for study,method,strategy,adaptive,gamma,k in group:
                     for index,ex in enumerate(samples):
                         jobs.append((scenario_name,scenario,repeat,study,method,strategy,adaptive,gamma,k,index,ex))
-        for scenario_name,scenario,repeat,study,method,strategy,adaptive,gamma,k,index,ex in jobs:
+        print(f'Running {len(jobs)} requests. Mode={args.mode}', flush=True)
+        for job_index,(scenario_name,scenario,repeat,study,method,strategy,adaptive,gamma,k,index,ex) in enumerate(jobs,1):
             name=f'{scenario_name}_{repeat}_{method}_{index}'
+            print(f'[{job_index}/{len(jobs)}] {name}: starting', flush=True)
             try:
                 record=(live.run(strategy,adaptive,gamma,k,ex,index,scenario) if live else
                         run_simulation(c,strategy,adaptive,gamma,k,index,scenario))
                 record.update(id=name,mode=args.mode,study=study,method=method,scenario=scenario_name,
                               configured_rtt_ms=scenario['rtt_ms'],repeat=repeat,request_index=index,
                               configured_gamma=gamma,configured_k=k,adaptive_window=adaptive)
-                enrich(record); records.append(record)
+                enrich(record)
                 write_json(out/'raw'/f'{name}.json',record)
+                if record.get('strict_consistent') is False:
+                    raise StrictConsistencyError(f'Strict output mismatch: raw/{name}.json; suite stopped')
+                records.append(record)
+                print(f'[{job_index}/{len(jobs)}] {name}: OK '
+                      f'{record["output_tokens"]} tokens, {record["wall_time_s"]:.2f}s, '
+                      f'{record["tokens_per_second"]:.2f} tokens/s', flush=True)
                 if c['VERBOSE_ROUNDS']:
                     for row in record['rounds']:
                         print(f"[{name} round={row['round_index']}] K={row['k']} gamma={row['gamma']} "
@@ -132,9 +164,12 @@ def main(argv=None):
                               f"verify={row['cloud_verify_ms']:.3f}ms total={row['round_total_ms']:.3f}ms")
                 if c['VERBOSE_TOKENS'] and args.mode=='simulate':
                     for row in record['rounds']: print(json.dumps(row['decisions'],ensure_ascii=False))
+            except StrictConsistencyError:
+                raise
             except Exception as exc:
                 failures.append({'stage':name,'error':str(exc)})
                 (out/'logs'/f'{name}.log').write_text(traceback.format_exc(),encoding='utf-8')
+                print(f'[{job_index}/{len(jobs)}] {name}: FAILED: {exc}',file=sys.stderr,flush=True)
         if not records: raise RuntimeError('No successful experiments; no charts generated')
         table=[{k:v for k,v in r.items() if k not in ('rounds','output_ids','reference_ids','output_text','reference_text')} for r in records]
         write_csv(out/'tables/requests.csv',table)
@@ -156,20 +191,38 @@ def main(argv=None):
                     continue
                 values=[row[metric] for r in group for row in r['rounds'] if row.get(metric) is not None]
                 if values: grouped.append(dict(study=key[0],scenario=key[1],method=key[2],metric=metric,**summary(values)))
-            for metric in ('tokens_per_second','ttft_ms','tpot_ms','strict_acceptance_rate','relaxed_acceptance_rate','token_difference_rate','task_quality_drop'):
-                values=[r[metric] for r in group if r[metric] is not None]
+            for metric in ('tokens_per_second','ttft_ms','tpot_ms','strict_acceptance_rate','relaxed_acceptance_rate','token_difference_rate','task_quality_drop','task_quality','reference_quality',
+                           'answer_extracted','reference_answer_extracted','truncated','reference_truncated'):
+                values=[r[metric] for r in group if r.get(metric) is not None]
                 if values: grouped.append(dict(study=key[0],scenario=key[1],method=key[2],metric=metric,**summary(values)))
         write_csv(out/'tables/comparison.csv',grouped)
+        from analysis.paired import paired_comparisons
+        paired = paired_comparisons(records, c['SEED'])
+        if paired:
+            write_csv(out/'tables/paired_comparison.csv', paired)
         print(f'Completed {len(records)} requests; {len(failures)} failures. Mode={args.mode}')
         for key,v in statistics.items(): print(f"{v['label']}: mean={v['mean']:.3f}, P95={v['p95']:.3f}, P99={v['p99']:.3f}")
         from analysis.make_figures import make_figures
+        print('Generating figures and report...', flush=True)
         make_figures(out)
+    except KeyboardInterrupt:
+        interrupted=True
+        failures.append({'stage':'pipeline','error':'Interrupted by user; experiment suite is incomplete'})
+        print('Interrupted; saving partial run status and report.',file=sys.stderr,flush=True)
     except Exception as exc:
         failures.append({'stage':'pipeline','error':str(exc)})
         (out/'logs/pipeline.log').write_text(traceback.format_exc(),encoding='utf-8')
         print(f'ERROR: {exc}',file=sys.stderr)
     finally:
-        write_json(out/'report/status.json',{'mode':args.mode,'checks':checks,'successful_requests':len(records),'failures':failures})
+        if service_locks is not None:
+            try:
+                if service_locks.handles:
+                    write_json(out/'config/hardware_end.json', environment_snapshot())
+            except Exception as exc:
+                failures.append({'stage':'hardware_snapshot','error':str(exc)})
+            finally:
+                service_locks.close()
+        write_json(out/'report/status.json',{'mode':args.mode,'checks':checks,'successful_requests':len(records),'failures':failures,'interrupted':interrupted})
         report=['# 云边推测解码实验报告', '', f'模式：**{args.mode}**。'+('本报告全部性能与模型输出来自合成模型和虚拟时间，不是真实 GPU/LLM 实验。' if args.mode=='simulate' else '真实服务，网络条件为应用层延迟注入；不是操作系统流量整形。'),
                 '',f'成功请求：{len(records)}；失败项：{len(failures)}。',
                 '', '基线 A：严格+固定窗口；B：严格+自适应窗口；C：受质量约束的固定 K+固定窗口；Proposed：联合自适应。',
@@ -179,6 +232,20 @@ def main(argv=None):
                 '', '模拟各方案使用同一合成模型、种子、请求索引、网络函数；重复运行用于管线验证，不代表独立统计样本。真实运行按固定种子打乱方案顺序，但硬件负载与缓存仍需外部控制。',
                 '', '## 检查结果', *[f"- {x['stage']}: exit {x['exit_code']}" for x in checks],
                 '', '## 失败项', *([f"- {f['stage']}: {f['error']}" for f in failures] or ['无。'])]
+        if records and args.mode == 'real':
+            report += ['', '## 品质诊断', '',
+                       '准确率包含截断与无法提取答案的失败；质量下降为 0 不代表质量无损。',
+                       '| 场景 | 方案 | 准确率 | 参照准确率 | 答案提取率 | 截断率 | 参照截断率 |',
+                       '|---|---|---:|---:|---:|---:|---:|']
+            for scenario, method in sorted({(r['scenario'],r['method']) for r in records if r['study']=='baseline'}):
+                group=[r for r in records if r['study']=='baseline' and r['scenario']==scenario and r['method']==method]
+                cells=[]
+                for key in ('task_quality','reference_quality','answer_extracted','truncated','reference_truncated'):
+                    values=[r[key] for r in group if r.get(key) is not None]
+                    cells.append(f'{mean(values):.3f}' if values else 'N/A')
+                report.append('| '+ ' | '.join([scenario, method]+cells)+' |')
+            if not any(r.get('reference_quality') for r in records):
+                report += ['', '**参照未取得任何正确答案：当前质量比较缺乏鉴别力，不能据此声称质量保持。**']
         if records:
             report += ['', '## 基线比较（各请求等权平均）', '',
                        '| 场景 | 方案 | tokens/s | TTFT ms | Token差异率 | 任务质量下降 |',
@@ -192,7 +259,7 @@ def main(argv=None):
                        '', '## 图表', '', *[f'![{p.stem}](../figures/{p.name})' for p in sorted((out/'figures').glob('*.png'))]]
         (out/'report/report.md').write_text('\n'.join(report)+'\n',encoding='utf-8')
         print(f'Artifacts: {out.resolve()}')
-    return int(bool(failures))
+    return 130 if interrupted else int(bool(failures))
 
 
 if __name__=='__main__': sys.exit(main())

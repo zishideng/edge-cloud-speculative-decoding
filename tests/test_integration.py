@@ -42,6 +42,18 @@ class IntegrationTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.client.close(); cls.fake.stop(); server.STATE['llm']=None
 
+    def test_diagnostics_are_opt_in_and_match_generate(self):
+        token = target_next([1])
+        ordinary = self.client.post('/verify', json={'prompt_ids':[1], 'draft_ids':[token]}).json()
+        self.assertNotIn('target_distributions', ordinary['metadata'])
+        data = self.client.post('/verify', json={'prompt_ids':[1], 'draft_ids':[token], 'diagnostics':True}).json()
+        top = next(int(t) for t, value in data['metadata']['target_distributions'][0].items() if value['rank'] == 1)
+        generated = self.client.post('/generate', json={'prompt_ids':[1], 'max_tokens':1, 'eos_id':999}).json()
+        self.assertEqual(top, generated['token_ids'][0])
+        self.assertEqual(generated['stop_reason'], 'length')
+        stopped = self.client.post('/generate', json={'prompt_ids':[1], 'max_tokens':1, 'eos_id':token}).json()
+        self.assertEqual(stopped['stop_reason'], 'eos')
+
     def test_verify_protocol(self):
         token=target_next([1])
         response=self.client.post('/verify',json={'prompt_ids':[1],'draft_ids':[token]})
@@ -113,6 +125,7 @@ class IntegrationTests(unittest.TestCase):
             with patch.object(client,'apply_chat_template',return_value='prompt'),patch.object(client,'tokenize',return_value=[1]),patch.object(client,'draft',side_effect=draft),patch.object(client,'detokenize',side_effect=lambda x:str(x)):
                 _,metrics=client.generate([{'role':'user','content':'hi'}],remote,max_tokens=9,eos_id=999,strategy='strict')
             self.assertEqual(metrics.total_output_tokens,9)
+            self.assertEqual(metrics.stop_reason, 'length')
             self.assertGreater(metrics.ttft_ms,0)
             self.assertTrue(all(r['n_accepted']==r['gamma'] for r in metrics.rounds))
             self.assertTrue(all(r['network_rtt_estimated'] for r in metrics.rounds))

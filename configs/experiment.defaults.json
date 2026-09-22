@@ -17,7 +17,7 @@
   "CLOUD_URL": "http://172.23.119.64:9090",
   "MODEL_PAIR": "llama3_awq",
   "TASK": "gsm8k", "DATASET": "common/data/gsm8k_test_50.jsonl",
-  "N_REQUESTS": 4, "MAX_TOKENS": 48, "FIXED_K": 2,
+  "N_REQUESTS": 50, "MAX_TOKENS": 512, "FIXED_K": 2,
   "GAMMA_SWEEP": [1, 2, 4, 8], "K_SWEEP": [1, 2, 3, 4],
   "REPEATS": 2, "VERBOSE_TOKENS": false, "VERBOSE_ROUNDS": false,
   "SIM_DRAFT_TOKEN_MS": 2, "SIM_VERIFY_FIXED_MS": 3,

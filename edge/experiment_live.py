@@ -1,9 +1,9 @@
 """Real-service adapter. Network impairment is application-level injection."""
 import json
 import time
-from dataclasses import asdict
+from pathlib import Path
 from common.model_config import load_model_config, validate_pair, get_draft_vocab
-from common.quality import task_quality
+from common.quality import evaluate_quality, first_divergence
 from common.simulation import network_condition
 from edge.edge_client_smart import SmartEdgeClient
 from edge.verifier import RemoteVerifier
@@ -54,8 +54,11 @@ class LiveExperiment:
         info=self.remote.experiment_info()
         if info['target_model'] != self.model['target']:
             raise ValueError('Running target does not match MODEL_PAIR target')
+        if not info.get('strict_diagnostics_available'):
+            raise RuntimeError('Cloud service lacks strict diagnostics; restart it with the updated cloud.verify_server')
         self.info=info
         self.references={}
+        self.reference_stops={}
 
     def messages(self,example):
         question=example.get('question') or example.get('prompt') or example.get('turns',[''])[0]
@@ -71,9 +74,12 @@ class LiveExperiment:
             response.raise_for_status(); data=response.json()
             text=self.client.detokenize([t for t in data['token_ids'] if t != self.model['eos_id']])
             self.references[index]=(data['token_ids'],text)
+            self.reference_stops[index] = data.get('stop_reason') or ('eos' if self.model['eos_id'] in data['token_ids'] else
+                'server_stop' if data.get('should_stop') or len(data['token_ids']) < self.c['MAX_TOKENS'] else 'length')
         return self.references[index]
 
     def run(self,strategy,adaptive_window,gamma,k,example,index,scenario):
+        started_at = time.time()
         ref_ids,ref_text=self.reference(example,index)
         remote=ImpairedVerifier(self.c['CLOUD_URL'],self.c,scenario)
         try:
@@ -82,8 +88,54 @@ class LiveExperiment:
                 strategy=strategy,adaptive_window=adaptive_window,fixed_k=k)
         finally:
             remote._session.close()
-        return dict(output_ids=m.output_ids,reference_ids=ref_ids,output_text=text,reference_text=ref_text,
+        quality = evaluate_quality(self.c['TASK'], text, example, m.stop_reason)
+        reference_quality = evaluate_quality(self.c['TASK'], ref_text, example, self.reference_stops[index])
+        divergence = first_divergence(ref_ids, m.output_ids)
+        return dict(started_at_unix=started_at, finished_at_unix=time.time(), **quality, **{'reference_'+key: value for key, value in reference_quality.items() if key != 'task_quality'},
+                    strict_consistent=(divergence is None) if strategy == 'strict' else None,
+                    first_divergence=divergence, output_ids=m.output_ids,reference_ids=ref_ids,output_text=text,reference_text=ref_text,
                     rounds=m.rounds,wall_time_s=m.wall_time_s,output_tokens=m.total_output_tokens,
                     ttft_ms=m.ttft_ms,tpot_ms=m.tpot_ms,tokens_per_second=m.tokens_per_second,
-                    quality_spent=m.quality_spent,task_quality=task_quality(self.c['TASK'],text,example),
-                    reference_quality=task_quality(self.c['TASK'],ref_text,example),synthetic_token_agreement=None)
+                    quality_spent=m.quality_spent, reference_quality=reference_quality['task_quality'],synthetic_token_agreement=None)
+
+
+    def diagnose(self, example, reference_ids, output_ids):
+        """Compare both target paths on the identical first-divergence prefix."""
+        position = first_divergence(reference_ids, output_ids)
+        if position is None:
+            return None
+        prompt = self.client.tokenize(self.client.apply_chat_template(self.messages(example)), add_special=False)
+        context = prompt + reference_ids[:position]
+        payload = dict(prompt_ids=context, max_tokens=1, temperature=0, eos_id=self.model['eos_id'])
+        response = self.remote._session.post(self.remote.base+'/generate', json=payload,
+                                              timeout=self.c['REQUEST_TIMEOUT_S'])
+        response.raise_for_status()
+        diagnostic = dict(position=position, prompt_ids=context, generate=response.json(), windows=[])
+        for gamma in sorted(set(self.c['GAMMA_SWEEP'] + [self.c['GAMMA_INITIAL']])):
+            draft, _ = self.client.draft(context, gamma, 0.0)
+            response = self.remote._session.post(self.remote.base+'/verify', json=dict(
+                prompt_ids=context, draft_ids=draft, temperature=0, eos_id=self.model['eos_id'],
+                diagnostics=True, policy=dict(strategy='strict', k=1, spent=0, config=self.c)),
+                timeout=self.c['REQUEST_TIMEOUT_S'])
+            response.raise_for_status()
+            diagnostic['windows'].append(dict(gamma=gamma, draft_ids=draft, verify=response.json()))
+        return diagnostic
+
+    def preflight(self, samples, output_dir):
+        """Full strict sequences on up to four prompts; fail before timed jobs."""
+        directory = Path(output_dir)
+        directory.mkdir(exist_ok=True)
+        for index, example in enumerate(samples[:4]):
+            for gamma in sorted(set(self.c['GAMMA_SWEEP'] + [self.c['GAMMA_INITIAL']])):
+                record = self.run('strict', False, gamma, 1, example, index, {'rtt_ms': 0})
+                path = directory / f'strict_{index}_gamma_{gamma}.json'
+                path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+                if not record['strict_consistent']:
+                    try:
+                        diagnostic = self.diagnose(example, record['reference_ids'], record['output_ids'])
+                    except Exception as exc:
+                        diagnostic = {'diagnostic_error': str(exc)}
+                    path.with_suffix('.diagnostic.json').write_text(
+                        json.dumps(diagnostic, ensure_ascii=False, indent=2), encoding='utf-8')
+                    raise RuntimeError(f'Strict verification differs from greedy reference; see {path}')
+        return dict(prompts=min(4, len(samples)), passed=True, warmup='strict preflight, excluded from timing')

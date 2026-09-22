@@ -1,4 +1,4 @@
-﻿"""Synchronous cloud-edge experiment client with quality-aware joint control."""
+"""Synchronous cloud-edge experiment client with quality-aware joint control."""
 import time
 from dataclasses import dataclass, field
 from edge.edge_client import EdgeClient, GenerationMetrics
@@ -13,6 +13,7 @@ class ExperimentMetrics(GenerationMetrics):
     output_ids: list = field(default_factory=list)
     token_visible_ms: list = field(default_factory=list)
     quality_spent: float = 0.0
+    stop_reason: str = "length"
 
 
 class SmartEdgeClient(EdgeClient):
@@ -88,6 +89,7 @@ class SmartEdgeClient(EdgeClient):
             if c['VERBOSE_TOKENS']:
                 print(decisions)
             if eos_id in produced or vr.should_stop:
+                m.stop_reason = "eos" if eos_id in produced else "server_stop"
                 break
         m.total_output_tokens = len(m.output_ids)
         m.ttft_ms = m.token_visible_ms[0]
