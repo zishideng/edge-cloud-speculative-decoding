@@ -7,11 +7,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from common.window_estimator import estimate
+from common.result_storage import compact_record
 
 
 def make_figures(directory):
     root=Path(directory)
-    records=[json.loads(p.read_text(encoding='utf-8')) for p in (root/'raw').glob('*.json')]
+    records=[compact_record(json.loads(p.read_text(encoding='utf-8'))) for p in (root/'raw').glob('*.json')]
     if not records:
         raise ValueError('No successful raw experiments; refusing to create empty charts')
     c=json.loads((root/'config/resolved.json').read_text(encoding='utf-8'))
@@ -22,7 +23,8 @@ def make_figures(directory):
     sweep=[r for r in records if r['study']=='gamma_sweep']
     ksweep=[r for r in records if r['study']=='k_sweep']
     if not base or not sweep or not ksweep:
-        raise ValueError('Incomplete baseline or parameter sweeps; see failure logs')
+        (out/'incomplete.json').write_text(json.dumps({'reason':'Missing baseline or sweep data; charts skipped; see raw and tables.'}), encoding='utf-8')
+        return
     plt.rcParams.update({'font.size':10,'axes.spines.top':False,'axes.spines.right':False})
 
     def save(fig,name):
@@ -55,6 +57,18 @@ def make_figures(directory):
     qlabel='Task accuracy drop (fraction)' if quality_available else 'Token difference vs strict reference (proxy, not task quality)'
     curve(ksweep,'configured_k',lambda r:r[qkey],'k_quality',
           'Quality change under fixed K','Configured K',qlabel)
+
+    complete = [s for s in scenarios
+                if all(any(r['method']==m and r['scenario']==s for r in base) for m in ('A','B','C','Proposed'))
+                and all(any(r['configured_gamma']==g and r['scenario']==s for r in sweep) for g in c['GAMMA_SWEEP'])]
+    if len(complete) != len(scenarios):
+        (out/'incomplete.json').write_text(json.dumps({'excluded_comparison_scenarios': [s for s in scenarios if s not in complete],
+            'reason':'Missing methods or gamma candidates; available parameter curves retained.'}), encoding='utf-8')
+        prefix += ' / PARTIAL DATA'
+    scenarios = complete
+    if not scenarios:
+        print('Incomplete data: saved available parameter curves; comparison charts skipped.')
+        return
 
     # Compare each scheme within a scenario; mixed jitter/queue scenarios are categorical.
     fig,ax=plt.subplots(figsize=(9,5))
@@ -125,7 +139,8 @@ def make_figures(directory):
     fig,axes=plt.subplots(5,1,figsize=(10,13),sharex=True)
     labels=['K','Gamma','RTT estimate (ms)','Accepted / examined','Quality risk']
     for s in scenarios:
-        rec=next(r for r in base if r['method']=='Proposed' and r['scenario']==s and r['repeat']==0 and r['request_index']==0)
+        rec=next((r for r in base if r['method']=='Proposed' and r['scenario']==s and r['repeat']==0 and r['request_index']==0), None)
+        if rec is None: continue
         rows=rec['rounds']; elapsed=[]; t=0
         for r in rows: t+=r['round_total_ms'];elapsed.append(t/1000)
         values=[[r['k'] for r in rows],[r['gamma'] for r in rows],[r['network_rtt_ms'] for r in rows],

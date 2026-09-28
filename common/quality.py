@@ -39,10 +39,3 @@ def evaluate_quality(task, output, example, stop_reason):
     return dict(task_quality=score, answer_extracted=extracted,
                 quality_status=status, stop_reason=stop_reason,
                 truncated=stop_reason == 'length')
-
-
-def first_divergence(reference, output):
-    for index, (expected, actual) in enumerate(zip(reference, output)):
-        if expected != actual:
-            return index
-    return min(len(reference), len(output)) if len(reference) != len(output) else None

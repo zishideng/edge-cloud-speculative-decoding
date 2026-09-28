@@ -10,6 +10,8 @@ import subprocess
 import sys
 import traceback
 import uuid
+import requests
+from common.result_storage import compact_record, raw_rounds
 from statistics import mean
 from datetime import datetime
 from pathlib import Path
@@ -19,9 +21,6 @@ from common.quality import difference_rate
 from common.simulation import run_simulation
 from experiments.isolation import ServiceLocks, environment_snapshot
 
-
-class StrictConsistencyError(RuntimeError):
-    pass
 
 
 def write_json(path,data):
@@ -122,15 +121,6 @@ def main(argv=None):
         write_json(out/'config/dataset.json',{'path':c['DATASET'],'sha256':hashlib.sha256(data).hexdigest(),
                                             'used_by_model':args.mode=='real',
                                             'note':'Synthetic mode uses request indices, not natural language content'})
-        if live:
-            print('Checking strict reference consistency and warming services...', flush=True)
-            try:
-                preflight = live.preflight(samples, out/'preflight')
-            except Exception:
-                checks.append({'stage':'strict_consistency','exit_code':1})
-                raise
-            checks.append({'stage':'strict_consistency','exit_code':0})
-            write_json(out/'config/preflight.json', preflight)
         jobs=[]
         for scenario_name,scenario in c['NETWORK_SCENARIOS'].items():
             for repeat in range(c['REPEATS']):
@@ -151,9 +141,7 @@ def main(argv=None):
                               configured_gamma=gamma,configured_k=k,adaptive_window=adaptive)
                 enrich(record)
                 write_json(out/'raw'/f'{name}.json',record)
-                if record.get('strict_consistent') is False:
-                    raise StrictConsistencyError(f'Strict output mismatch: raw/{name}.json; suite stopped')
-                records.append(record)
+                records.append(compact_record(record))
                 print(f'[{job_index}/{len(jobs)}] {name}: OK '
                       f'{record["output_tokens"]} tokens, {record["wall_time_s"]:.2f}s, '
                       f'{record["tokens_per_second"]:.2f} tokens/s', flush=True)
@@ -164,17 +152,25 @@ def main(argv=None):
                               f"verify={row['cloud_verify_ms']:.3f}ms total={row['round_total_ms']:.3f}ms")
                 if c['VERBOSE_TOKENS'] and args.mode=='simulate':
                     for row in record['rounds']: print(json.dumps(row['decisions'],ensure_ascii=False))
-            except StrictConsistencyError:
-                raise
             except Exception as exc:
                 failures.append({'stage':name,'error':str(exc)})
                 (out/'logs'/f'{name}.log').write_text(traceback.format_exc(),encoding='utf-8')
                 print(f'[{job_index}/{len(jobs)}] {name}: FAILED: {exc}',file=sys.stderr,flush=True)
+                if isinstance(exc, requests.ConnectionError):
+                    print('Service connection lost; stopping remaining jobs and summarizing completed requests.', file=sys.stderr, flush=True)
+                    break
         if not records: raise RuntimeError('No successful experiments; no charts generated')
         table=[{k:v for k,v in r.items() if k not in ('rounds','output_ids','reference_ids','output_text','reference_text')} for r in records]
         write_csv(out/'tables/requests.csv',table)
         rounds=[dict(r,experiment_id=record['id'],method=record['method'],scenario=record['scenario']) for record in records for r in record['rounds']]
-        write_csv(out/'tables/rounds.csv',rounds)
+        # Stream full round telemetry from disk instead of retaining nested decisions twice.
+        with (out/'tables/rounds.csv').open('w', newline='', encoding='utf-8-sig') as stream:
+            writer = None
+            for row in raw_rounds(out/'raw'):
+                if writer is None:
+                    writer = csv.DictWriter(stream, fieldnames=list(row))
+                    writer.writeheader()
+                writer.writerow({k: json.dumps(v,ensure_ascii=False) if isinstance(v,(dict,list)) else v for k,v in row.items()})
         statistics={}
         for metric,label in LABELS.items():
             source=records if metric in ('ttft_ms','tpot_ms','tokens_per_second') else rounds

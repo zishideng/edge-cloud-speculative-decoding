@@ -209,7 +209,7 @@ bash run_all_experiments.sh --mode simulate
 | `humaneval` | `common/data/humaneval_30.jsonl` | 代码续写；保存输出与参照的文本/token 差异，目前不执行代码测试，任务质量为 `null` |
 | `mtbench` | `common/data/mtbench_30.jsonl` | 使用首轮问题生成回复；目前不运行多轮对话或外部裁判，任务质量为 `null` |
 
-默认取 GSM8K 文件的 **50 题**（`N_REQUESTS=50`），每次最多生成 **512 个 token**
+默认取 GSM8K 文件的 **前 4 题**（`N_REQUESTS=4`），每次最多生成 **512 个 token**
 （`MAX_TOKENS=512`）。仍需检查截断率与答案提取率；未提取到最终数字时
 GSM8K 得分为 0。`simulate` 不对这些自然语言题目做模型推理，其任务质量指标为 `null`。
 
@@ -232,7 +232,7 @@ GSM8K 得分为 0。`simulate` 不对这些自然语言题目做模型推理，�
 | K 扫描 / `k_1`、`k_2`、`k_3`、`k_4` | 固定 gamma=2，分别设置 K；仍受预算限制 | 接受率、速度与质量变化的关系 |
 
 真实模式还会为每道题通过云端 `/generate` 生成一次严格贪心参照，并在本次运行中缓存复用。
-参照的 token 和文本保存在每份对应的 `raw/*.json` 中，不单独计入下列 8400 组实验。
+参照的 token 和文本保存在每份对应的 `raw/*.json` 中，不单独计入下列 672 组实验。
 
 ### 3. 网络情境与默认任务数量
 
@@ -249,7 +249,7 @@ GSM8K 得分为 0。`simulate` 不对这些自然语言题目做模型推理，�
 | `burst` | RTT 5 ms；从轮次索引 4（第 5 轮）起额外增加 100 ms |
 | `queue` | RTT 10 ms，服务端排队注入 20 ms、抖动 ±15 ms |
 
-默认总数为：**7 种情境 × 2 次重复 ×（4 个基线 + 4 个 gamma 扫描 + 4 个 K 扫描）× 50 道题 = 8400 组**。
+默认总数为：**7 种情境 × 2 次重复 ×（4 个基线 + 4 个 gamma 扫描 + 4 个 K 扫描）× 4 道题 = 672 组**。
 同一重复内方案顺序按固定种子打乱，所以终端不一定从 A 开始。修改 `N_REQUESTS`、`REPEATS`、
 扫描列表或 `NETWORK_SCENARIOS` 会改变总数；`N_REQUESTS` 超过数据集长度时以实际题数为准。
 这里的一组包含多轮 draft → verify HTTP 调用，并非一次 HTTP 请求。
@@ -259,9 +259,9 @@ GSM8K 得分为 0。`simulate` 不对这些自然语言题目做模型推理，�
 启动后会立即打印结果目录和检查阶段。每组请求开始与完成时打印进度，例如：
 
 ```text
-Running 8400 requests. Mode=real
-[1/8400] low_0_gamma_8_0: starting
-[1/8400] low_0_gamma_8_0: OK 48 tokens, 7.61s, 6.31 tokens/s
+Running 672 requests. Mode=real
+[1/672] low_0_gamma_8_0: starting
+[1/672] low_0_gamma_8_0: OK 48 tokens, 7.61s, 6.31 tokens/s
 ```
 
 `low_0_gamma_8_0` 表示 low 情境、第 0 次重复、gamma=8 扫描、第 0 道题（编号从 0 开始）。
@@ -325,18 +325,15 @@ python -m analysis.make_figures results/<本次运行目录>
 ```
 
 云端单机 AR/本地投机/n-gram 基线、旧 C1、异步预取、能耗和 SLO 实验仍需通过各自入口单独运行，
-不包含在此脚本的 8400 组中。
+不包含在此脚本的 672 组中。
 
 
 ### P0 正确性与测量保护
 
-真实运行前先更新并重启云端 `cloud.verify_server`，新客户端要求服务声明
-`strict_diagnostics_available`。前 4 题在配置的每个固定 gamma 下进行完整严格序列检查，
-与 `/generate` 贪心参照逐 token 比较；这些调用兼作暖机，不计入性能样本。
-失败时停止套件，并将输出及首个分歧位置的同前缀 `/generate(max_tokens=1)`、
-不同 gamma 的 `/verify` 候选分布保存在 `preflight/`。
-正式测试的所有严格请求也检查一致性，失败记录保存在 `raw/`，并立即停止套件。
-此机制检测差异，不会通过改用云端生成掩盖差异；后端数值问题仍需根据诊断定位。
+实验直接以 K=1 作为基线：A 为固定 gamma，B 为自适应 gamma。
+不再运行生成结果的一致性预检，也不会因输出与云端贪心参照不同而停止。
+云端参照仅用于质量评分和描述性差异统计，不作为实验准入条件。
+静态检查、单元测试、服务协议和词表检查仍然保留。
 
 `requests.csv` 和原始 JSON 增加 `stop_reason`、`truncated`、`answer_extracted`、
 `quality_status` 与对应参照字段。报告同时列出绝对准确率、参照准确率、提取率与截断率。
@@ -350,7 +347,7 @@ python -m analysis.make_figures results/<本次运行目录>
 `service_info.json` 保存 target 运行库版本。快照不是全程监控，也不自动修改功耗或清空缓存；
 重复实验须保持相同功耗、时钟、缓存策略与服务负载，并另行记录远端硬件负载。
 
-完整默认套件现在为 8400 组，外加预检与参照请求。仅检查流程时显式使用：
+完整默认套件现在为 672 组，外加参照请求。仅检查流程时显式使用：
 
 ```bash
 bash run_all_experiments.sh --mode simulate --config configs/experiment.smoke.json

@@ -50,6 +50,7 @@ fi
 PORT="${PORT:-8080}"
 HOST="${HOST:-0.0.0.0}"     # 0.0.0.0 so VPN clients (the cloud) can reach us
 NGL="${NGL:-99}"            # GPU layers; 99 = all on GPU
+CACHE_RAM="${CACHE_RAM:-256}" # MiB; bound cross-request prompt cache on shared-memory Jetson
 CTX="${CTX:-4096}"          # context window; CTX=2048 if RAM is tight
 
 [[ -x "$LLAMA_BIN" ]] || { echo "ERROR: $LLAMA_BIN not found. Build llama.cpp first."; exit 1; }
@@ -75,4 +76,4 @@ exec "$LLAMA_BIN" \
   -m "$MODEL" \
   --host "$HOST" --port "$PORT" \
   --n-gpu-layers "$NGL" --ctx-size "$CTX" \
-  --parallel 1 --cont-batching --metrics
+  --parallel 1 --cont-batching --metrics --cache-ram "$CACHE_RAM"

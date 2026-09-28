@@ -54,7 +54,6 @@ class VerifyRequest(BaseModel):
     eos_id: Optional[int] = None   # accepting this stops chain
     policy: Optional[dict] = None
     experiment_queue_ms: float = 0.0
-    diagnostics: bool = False
 
 
 class VerifyResponse(BaseModel):
@@ -93,7 +92,6 @@ class InfoResponse(BaseModel):
     port: int
     uptime_s: float
     runtime_versions: dict = {}
-    strict_diagnostics_available: bool = True
 
 
 # --------------------------------------------------------------------------- #
@@ -253,8 +251,6 @@ def _verify(req: VerifyRequest):
     md = {'decisions': decisions, 'quality_spent': spent, 'n_draft': n_draft,
           'n_ctx': n_ctx, 'queue_scope': 'application model lock; excludes HTTP ingress',
           'draft_logprobs_target': [d.get(t, {}).get('logprob') for d,t in zip(target_topk_per_pos, req.draft_ids)]}
-    if req.diagnostics:
-        md["target_distributions"] = target_topk_per_pos
     elapsed = (time.perf_counter() - t0) * 1000.0
 
     return VerifyResponse(

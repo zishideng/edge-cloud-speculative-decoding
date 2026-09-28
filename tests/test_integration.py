@@ -42,14 +42,9 @@ class IntegrationTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.client.close(); cls.fake.stop(); server.STATE['llm']=None
 
-    def test_diagnostics_are_opt_in_and_match_generate(self):
+    def test_generate_stop_reason(self):
         token = target_next([1])
-        ordinary = self.client.post('/verify', json={'prompt_ids':[1], 'draft_ids':[token]}).json()
-        self.assertNotIn('target_distributions', ordinary['metadata'])
-        data = self.client.post('/verify', json={'prompt_ids':[1], 'draft_ids':[token], 'diagnostics':True}).json()
-        top = next(int(t) for t, value in data['metadata']['target_distributions'][0].items() if value['rank'] == 1)
         generated = self.client.post('/generate', json={'prompt_ids':[1], 'max_tokens':1, 'eos_id':999}).json()
-        self.assertEqual(top, generated['token_ids'][0])
         self.assertEqual(generated['stop_reason'], 'length')
         stopped = self.client.post('/generate', json={'prompt_ids':[1], 'max_tokens':1, 'eos_id':token}).json()
         self.assertEqual(stopped['stop_reason'], 'eos')
