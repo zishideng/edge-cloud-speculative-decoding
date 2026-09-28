@@ -57,6 +57,17 @@ class IntegrationTests(unittest.TestCase):
         self.assertGreaterEqual(data['cloud_queue_ms'],0)
         self.assertGreater(data['cloud_verify_ms'],0)
 
+    def test_opt_in_target_distributions_preserve_decisions(self):
+        token = target_next([1])
+        body = {'prompt_ids': [1], 'draft_ids': [token]}
+        regular = self.client.post('/verify', json=body).json()
+        diagnostic = self.client.post('/verify', json=dict(body, diagnostics=True)).json()
+        self.assertNotIn('target_distributions', regular['metadata'])
+        dist = diagnostic['metadata']['target_distributions'][0]
+        self.assertEqual(dist[str(token)]['rank'], 1)
+        self.assertEqual(regular['metadata']['decisions'], diagnostic['metadata']['decisions'])
+        self.assertEqual(regular['accepted_ids'], diagnostic['accepted_ids'])
+
     def test_experiment_protocol_preflight(self):
         verifier=RemoteVerifier('http://unused')
         for info in ({'target_model':'legacy'}, {'experiment_protocol_version':2}):

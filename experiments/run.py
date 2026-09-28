@@ -64,7 +64,10 @@ def enrich(record):
     record['text_difference_rate']=difference_rate(record['reference_text'],record['output_text'])
     record['token_difference_rate']=difference_rate(record['reference_ids'],record['output_ids'])
     record['task_quality_drop']=(record['reference_quality']-record['task_quality']) if record['task_quality'] is not None else None
-    record['round_latency']=summary([r['round_total_ms'] for r in rows])
+    record['round_latency']=summary([r['round_total_ms'] for r in rows]) if rows else None
+    if not rows:
+        for key in ('strict_acceptance_rate','relaxed_acceptance_rate','relaxed_only_rate','accepted_proposed_ratio'):
+            record[key] = None  # Autoregressive generation has no acceptance decisions.
     return record
 
 
@@ -75,6 +78,7 @@ def main(argv=None):
     parser.add_argument('--output-root',default='results')
     parser.add_argument('--verbose-tokens',action='store_true')
     parser.add_argument('--verbose-rounds',action='store_true')
+    parser.add_argument('--methods', nargs='+', help='Subset of method names; real mode additionally supports cloud_AR')
     args=parser.parse_args(argv)
     out=create_output(args.output_root)
     print(f'Artifacts: {out.resolve()}', flush=True)
@@ -82,6 +86,18 @@ def main(argv=None):
     service_locks=None
     try:
         c=load_config(args.config); c['VERBOSE_TOKENS'] |= args.verbose_tokens
+        selected = variants(c)
+        if args.methods:
+            if 'cloud_AR' in args.methods:
+                if args.mode != 'real':
+                    raise ValueError('cloud_AR requires real services; no synthetic AR timing model is defined')
+                selected.append(('cloud_baseline','cloud_AR','cloud_ar',False,0,None))
+            unknown = set(args.methods) - {v[1] for v in selected}
+            if unknown:
+                raise ValueError(f'Unknown methods: {sorted(unknown)}')
+            selected = [v for v in selected if v[1] in args.methods]
+        write_json(out/'config/execution.json', {'command':sys.argv if argv is None else argv,
+                                               'methods':[v[1] for v in selected]})
         if args.mode == 'real':
             service_locks = ServiceLocks([c['DRAFT_URL'], c['CLOUD_URL']], str(out.resolve()))
             service_locks.acquire()
@@ -99,7 +115,8 @@ def main(argv=None):
                          ('unit',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_core.py','-v']),
                          ('integration',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_integration.py','-v']),
                          ('p0',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_p0.py','-v']),
-                         ('metadata',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_draft_metadata.py','-v'])]:
+                         ('metadata',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_draft_metadata.py','-v']),
+                         ('research',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_research.py','-v'])]:
             print(f'Checking {name}...', flush=True)
             p=subprocess.run(cmd,capture_output=True,text=True,encoding='utf-8',errors='replace')
             (out/'logs'/f'{name}.log').write_text(p.stdout+p.stderr,encoding='utf-8')
@@ -124,7 +141,7 @@ def main(argv=None):
         jobs=[]
         for scenario_name,scenario in c['NETWORK_SCENARIOS'].items():
             for repeat in range(c['REPEATS']):
-                group=variants(c)
+                group=list(selected)
                 random.Random(c['SEED']+repeat).shuffle(group)
                 for study,method,strategy,adaptive,gamma,k in group:
                     for index,ex in enumerate(samples):
@@ -134,7 +151,8 @@ def main(argv=None):
             name=f'{scenario_name}_{repeat}_{method}_{index}'
             print(f'[{job_index}/{len(jobs)}] {name}: starting', flush=True)
             try:
-                record=(live.run(strategy,adaptive,gamma,k,ex,index,scenario) if live else
+                record=(live.run_cloud_ar(ex,index,scenario) if strategy=='cloud_ar' else
+                        live.run(strategy,adaptive,gamma,k,ex,index,scenario) if live else
                         run_simulation(c,strategy,adaptive,gamma,k,index,scenario))
                 record.update(id=name,mode=args.mode,study=study,method=method,scenario=scenario_name,
                               configured_rtt_ms=scenario['rtt_ms'],repeat=repeat,request_index=index,

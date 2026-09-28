@@ -31,7 +31,9 @@ def accept_prefix(distributions, draft_ids, *, k, config, spent=0.0, eos_id=None
         strict = token == top_id
         risk = min(1.0, regret / max(config['MAX_LOGPROB_REGRET'], 1e-12)) if candidate else 1.0
         effective_k = 1 if spent >= config['QUALITY_BUDGET'] * config['BUDGET_TIGHTEN_FRACTION'] else k
-        relaxed = bool(candidate and candidate['rank'] <= effective_k
+        # Global ranks may be tied. K=1 must still use the canonical top_id;
+        # otherwise a second rank-1 token bypasses strict rejection at zero regret.
+        relaxed = bool(effective_k > 1 and candidate and candidate['rank'] <= effective_k
                        and p_top1 >= config['MIN_TOP1_CONFIDENCE']
                        and regret <= config['MAX_LOGPROB_REGRET']
                        and ratio >= config['MIN_PROBABILITY_RATIO']

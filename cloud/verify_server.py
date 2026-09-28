@@ -17,6 +17,7 @@ Design notes:
 """
 import argparse
 import importlib.metadata
+import hashlib
 import logging
 import math
 import os
@@ -28,6 +29,7 @@ import socket
 import sys
 import time
 from typing import List, Optional
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -54,6 +56,7 @@ class VerifyRequest(BaseModel):
     eos_id: Optional[int] = None   # accepting this stops chain
     policy: Optional[dict] = None
     experiment_queue_ms: float = 0.0
+    diagnostics: bool = False
 
 
 class VerifyResponse(BaseModel):
@@ -92,6 +95,9 @@ class InfoResponse(BaseModel):
     port: int
     uptime_s: float
     runtime_versions: dict = {}
+    strict_diagnostics_available: bool = True
+    backend_settings: dict = {}
+    source_sha256: dict = {}
 
 
 # --------------------------------------------------------------------------- #
@@ -102,6 +108,7 @@ STATE = {
     "tokenizer": None,
     "args": None,
     "start_time": time.time(),
+    "source_sha256": {},
 }
 
 
@@ -137,6 +144,16 @@ def info():
         port=STATE["args"].port,
         uptime_s=time.time() - STATE["start_time"],
         runtime_versions={name: importlib.metadata.version(name) for name in ("vllm", "torch")},
+        backend_settings={
+            'dtype': str(getattr(cfg, 'dtype', None)),
+            'quantization': getattr(cfg, 'quantization', None),
+            'seed': getattr(cfg, 'seed', None),
+            'enforce_eager': getattr(cfg, 'enforce_eager', None),
+            'generation_config': str(getattr(cfg, 'generation_config', None)),
+            'VLLM_BATCH_INVARIANT': os.environ.get('VLLM_BATCH_INVARIANT'),
+            'VLLM_ENABLE_V1_MULTIPROCESSING': os.environ.get('VLLM_ENABLE_V1_MULTIPROCESSING'),
+        },
+        source_sha256=STATE['source_sha256'],
     )
 
 
@@ -251,6 +268,9 @@ def _verify(req: VerifyRequest):
     md = {'decisions': decisions, 'quality_spent': spent, 'n_draft': n_draft,
           'n_ctx': n_ctx, 'queue_scope': 'application model lock; excludes HTTP ingress',
           'draft_logprobs_target': [d.get(t, {}).get('logprob') for d,t in zip(target_topk_per_pos, req.draft_ids)]}
+    if req.diagnostics:
+        # Explicit opt-in: keep large probability payloads out of timed SD runs.
+        md['target_distributions'] = target_topk_per_pos
     elapsed = (time.perf_counter() - t0) * 1000.0
 
     return VerifyResponse(
@@ -320,6 +340,8 @@ def _generate(req: GenerateRequest):
 @app.on_event("startup")
 def _startup():
     args = STATE["args"]
+    STATE['source_sha256'] = {str(path.name): hashlib.sha256(path.read_bytes()).hexdigest()
+                             for path in (Path(__file__), Path(__file__).parents[1]/'common/acceptance.py')}
     log.info("Loading target model: %s (tp=%d, dtype=%s, quant=%s, gpu_util=%.2f)",
              args.target, args.tensor_parallel_size, args.dtype,
              args.quantization, args.gpu_memory_utilization)
