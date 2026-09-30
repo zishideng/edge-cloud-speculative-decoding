@@ -332,3 +332,23 @@ and orphan-work drain tests. Initial full-loop test failed because its mocked
 input list was mutated between the two variants; return a fresh token list per
 call and retain the initial test log. No real model experiment failed here.
 Decision: pending.
+
+### R011 outcome — fixed lookahead positive pilot signal
+
+32/32 requests completed. Both variants use strict K=1, gamma=4; candidate
+ahead length h=5 includes the predicted bonus token. Four independent GSM8K
+prompts, two repeats, injected delays 2/100 ms. Low: control 13.337 TPS,
+lookahead 15.008 TPS; paired gain +12.65%, descriptive prompt-bootstrap
+95% interval [8.82%, 16.66%]. High: 9.237→13.188 TPS; paired gain +42.82%,
+interval [38.22%, 47.42%]. All eight observations per variant per condition
+were correct; this does not prove quality noninferiority. Each condition
+generated 1,242 ahead tokens: 482 reused as draft, 122 matching bridge,
+630 discarded, 8 terminal/excess unused. Foreground waits were 16.932 s
+(low) and 0.461 s (high), pooled over eight candidate requests.
+Interpretation: fixed lookahead has an exploratory positive speed signal,
+especially with larger waiting time; approximately half of ahead tokens are
+discarded. A lightweight gate has a plausible cost-saving opportunity, but
+has not been shown to outperform fixed lookahead. Larger disjoint prompts
+and repeated confirmation remain necessary. Sources: fixed_lookahead and
+fixed_lookahead_analysis under the research root. Decision: ACCEPT feasibility
+hypothesis for this pilot; do not claim general or paper-level validation.
