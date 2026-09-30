@@ -304,3 +304,31 @@ candidate. Decision: INCONCLUSIVE for positive end-to-end hypothesis.
 R010 has started with n_probs=1 for ALL B/D/Proposed groups, as preregistered.
 Source: draft_payload_e2e_analysis under the research root; complete raw data
 and per-pair token counts preserved. Existing reports are not overwritten.
+
+### Experiment R011 — Fixed early drafting (user requested)
+
+Hypothesis: overlap a fixed amount of edge drafting with target verification
+and network waiting to improve throughput over synchronous speculative decoding.
+Both variants use K=1, gamma=4, unchanged n_probs=1. Candidate drafts h=5 ahead
+on context+current_draft while verify runs. The first ahead token predicts the
+target bonus; the full verified prefix must match before any continuation is
+reused. Ahead tokens are never committed directly and all reused candidates
+still pass target verification. Rejected/mismatched work is discarded.
+Measure 4 first GSM8K prompts × 2 repeats × 2 injected-delay conditions (2/100ms)
+× 2 variants = 32 requests. Randomize prompts and paired variant order with seed
+42. Token cap 512. No direct cloud-generation speed comparison.
+Record raw per-request throughput, latency, task quality, truncation, prefetch
+service time, foreground stall, bridge matches, draft reuse and discarded work.
+All pending prefetch tasks are joined at request end and charged to wall time.
+Overlapping service durations must not be added as serial cost components.
+Preregister >=5% paired TPS gain and prompt-bootstrap lower bound >0 as an
+exploratory positive signal per condition; any quality regression is reported.
+Four prompt clusters are not sufficient for generalization/noninferiority.
+The ongoing R010 retains exclusive benchmark access; R011 follows serially.
+Command: python -m experiments.fixed_lookahead --n 4 --repeats 2 --gamma 4
+--lookahead 5 --output-root results/research_20260928_135549/fixed_lookahead
+Validation: direct prefix/bonus mismatch, EOS, partial reuse, concurrent verify,
+and orphan-work drain tests. Initial full-loop test failed because its mocked
+input list was mutated between the two variants; return a fresh token list per
+call and retain the initial test log. No real model experiment failed here.
+Decision: pending.
