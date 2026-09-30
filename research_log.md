@@ -290,3 +290,17 @@ R010 analysis validation retry passed after handling missing task scores.
 The original failed analysis and its log remain. Sequential R009→analysis→R010
 continuation is saved in research-root `followup_r009.py`; its runtime status
 is distinct from immutable experiment outputs. No concurrent model benchmarks.
+
+### R009 outcome — end-to-end gain not established
+
+32/32 requests, 16 complete pairs, 8 independent prompt clusters. Paired mean
+throughput gain +2.5718%, descriptive 95% cluster interval [-0.7323%, +5.8367%].
+The preregistered positive-lower-bound condition fails. Latency reduction +2.64%,
+interval [-9.62%, +13.71%]. Control correct 13/16, candidate 14/16; truncations
+1/0. Quality observations are small and repeated; do not claim improved accuracy.
+Interpretation: draft microbenchmark savings did not establish a stable full
+system improvement. Retain DRAFT_N_PROBS=1 by default; no speedup claim from this
+candidate. Decision: INCONCLUSIVE for positive end-to-end hypothesis.
+R010 has started with n_probs=1 for ALL B/D/Proposed groups, as preregistered.
+Source: draft_payload_e2e_analysis under the research root; complete raw data
+and per-pair token counts preserved. Existing reports are not overwritten.

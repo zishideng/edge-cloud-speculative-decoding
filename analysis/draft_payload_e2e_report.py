@@ -66,7 +66,7 @@ def report(source, output_root):
     for r in summary:
         lines.append(f'| {r["metric"]} | {r["mean"]:.6f} | [{r["ci95_low"]}, {r["ci95_high"]}] |')
     lines += ['',f'Complete pairs: {len(pairs)}; token-identical pairs (diagnostic): {sum(p["ids_equal"] for p in pairs)}.',
-        f'Control/candidate correct: {sum(p["control_quality"] for p in pairs):g}/{sum(p["candidate_quality"] for p in pairs):g}.',
+        f'Control correct: {sum(p["control_quality"] for p in pairs):g}/{len(pairs)}; candidate correct: {sum(p["candidate_quality"] for p in pairs):g}/{len(pairs)}.',
         f'Control/candidate truncations: {sum(p["control_truncated"] for p in pairs)}/{sum(p["candidate_truncated"] for p in pairs)}.',
         'Latency depends on output length; TPS and the saved per-pair token counts must be inspected together.',
         'Zero observed quality change does not prove population noninferiority. Token identity is not an acceptance gate.']
