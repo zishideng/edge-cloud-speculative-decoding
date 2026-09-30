@@ -50,6 +50,7 @@ class FixedLookaheadClient(SmartEdgeClient):
             raise RuntimeError('Previous lookahead was not consumed')
         prefix = list(prompt)+list(draft)
         event = dict(event_index=len(self.lookahead_events),prefix_tokens=len(prefix),
+            prefetch_prefix_ids=prefix,
             requested_tokens=self.lookahead_tokens,generated_tokens=0,
             reused_tokens=0,bridge_tokens=0,discarded_tokens=0,unused_tokens=0,
             service_ms=0.0,wait_ms=0.0,outcome='pending')
@@ -70,11 +71,12 @@ class FixedLookaheadClient(SmartEdgeClient):
             raise
         finally:
             event['wait_ms'] = (time.perf_counter()-started)*1000
-        event.update(generated_tokens=len(ids),service_ms=service_ms)
+        event.update(generated_tokens=len(ids),prefetch_ids=list(ids),service_ms=service_ms)
         if prompt is None:
             event.update(unused_tokens=len(ids),outcome='terminal_drain')
             return [], []
         predicted = prefix+ids
+        event['reuse_prefix_ids'] = list(prompt)
         # A matching bonus token alone is insufficient if an earlier draft
         # token was rejected. Check the complete immutable prefix.
         compatible = (len(prefix) <= len(prompt) <= len(predicted)
