@@ -10,6 +10,11 @@ from analysis.paired import paired_comparisons
 from experiments.run import create_output, write_csv, write_json
 
 
+def mean_or_nan(values):
+    scored = [v for v in values if v is not None]
+    return mean(scored) if scored else float('nan')
+
+
 def summarize(values):
     return dict(mean=mean(values), median=median(values),
                 std=stdev(values) if len(values) > 1 else None,
@@ -89,7 +94,7 @@ def audit(source, output_root, sd_only=False):
         fig, axes = plt.subplots(1,2,figsize=(10,4))
         for ax, metric, title in zip(axes, ('exact_match','task_quality'),
                                    ('Exact token agreement with AR','GSM8K final-answer accuracy')):
-            values = [mean(r[metric] for r in baseline if r['method']==m) for m in methods]
+            values = [mean_or_nan([r.get(metric) for r in baseline if r['method']==m]) for m in methods]
             ax.bar(methods,values); ax.set_ylim(0,1.05); ax.set_title(title)
         fig.suptitle(f'Descriptive diagnostics: {n_prompts} prompts; pooled descriptive rates, not independent trials')
         fig.tight_layout()
@@ -103,7 +108,7 @@ def audit(source, output_root, sd_only=False):
     for si,scenario in enumerate(scenarios):
         for ax,metric,title in zip(axes,('tokens_per_second','task_quality'),
                                    ('Request throughput','GSM8K final-answer accuracy')):
-            values=[mean(r[metric] for r in baseline if r['method']==m and r['scenario']==scenario) for m in methods]
+            values=[mean_or_nan([r.get(metric) for r in baseline if r['method']==m and r['scenario']==scenario]) for m in methods]
             ax.bar([i+si*width for i in range(len(methods))],values,width=width,label=scenario)
             ax.set_xticks([i+(len(scenarios)-1)*width/2 for i in range(len(methods))],methods)
             ax.set_title(title)
@@ -115,12 +120,13 @@ def audit(source, output_root, sd_only=False):
     plt.close(fig)
     lines = ['# Task-quality and performance evidence audit', '', f'Source: `{source}`', '',
         f'Records: {len(records)}; independent prompts: {len({r["request_index"] for r in records})}.',
-        'Repeated prompts and network scenarios must not be counted as independent quality samples.', '',
+        'Repeated prompts and network scenarios must not be counted as independent quality samples.',
+        'Missing task scores are shown as nan/N/A, never counted as correct or incorrect.', '',
         '| Method | Runs | Mean TPS | Accuracy |', '|---|---:|---:|---:|']
     for method in methods:
         group = [r for r in baseline if r['method']==method]
         lines.append(f'| {method} | {len(group)} | {mean(r["tokens_per_second"] for r in group):.3f} | '
-                     f'{mean(r["task_quality"] for r in group):.6f} |')
+                     f'{mean_or_nan([r.get("task_quality") for r in group]):.6f} |')
     lines += ['', '## Task quality and performance by condition', '',
         '| Scenario | Method | Requests | Latency mean (s) | TPS mean | TPS median | TPS std | Accuracy | Truncation |',
         '|---|---|---:|---:|---:|---:|---:|---:|---:|']

@@ -279,3 +279,14 @@ practical speed threshold; observed quality loss prevents an unqualified win.
 This remains exploratory (8 new independent prompts), not a noninferiority trial.
 Decision: pending; run after R009 finishes. Optional method D and dataset offset
 are added to the standard runner so all variants share the measurement path.
+
+R010 runner validation: B/D/Proposed each executed in synthetic mode at dataset
+offset 8 with expected K/window settings. Analysis initially failed on missing
+synthetic task-quality scores (None); retain failure log and fix missing-value
+handling. Synthetic quality is unavailable, not zero. This validation supplies
+no real performance evidence.
+
+R010 analysis validation retry passed after handling missing task scores.
+The original failed analysis and its log remain. Sequential R009→analysis→R010
+continuation is saved in research-root `followup_r009.py`; its runtime status
+is distinct from immutable experiment outputs. No concurrent model benchmarks.
