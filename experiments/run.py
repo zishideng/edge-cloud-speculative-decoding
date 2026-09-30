@@ -79,6 +79,7 @@ def main(argv=None):
     parser.add_argument('--verbose-tokens',action='store_true')
     parser.add_argument('--verbose-rounds',action='store_true')
     parser.add_argument('--methods', nargs='+', help='Subset of method names; real mode additionally supports cloud_AR')
+    parser.add_argument('--request-offset', type=int, default=0, help='Skip dataset rows for disjoint confirmation prompts')
     args=parser.parse_args(argv)
     out=create_output(args.output_root)
     print(f'Artifacts: {out.resolve()}', flush=True)
@@ -88,6 +89,8 @@ def main(argv=None):
         c=load_config(args.config); c['VERBOSE_TOKENS'] |= args.verbose_tokens
         selected = variants(c)
         if args.methods:
+            if 'D' in args.methods:
+                selected.append(('ablation','D','fixed',True,c['GAMMA_INITIAL'],c['FIXED_K']))
             if 'cloud_AR' in args.methods:
                 if args.mode != 'real':
                     raise ValueError('cloud_AR requires real services; no synthetic AR timing model is defined')
@@ -132,10 +135,13 @@ def main(argv=None):
             write_json(out/'config/service_info.json',live.info)
         dataset_path=ROOT/c['DATASET']
         data=dataset_path.read_bytes()
-        samples=[json.loads(line) for line in data.decode('utf-8').splitlines() if line.strip()][:c['N_REQUESTS']]
+        if args.request_offset < 0:
+            raise ValueError('request-offset must be nonnegative')
+        samples=[json.loads(line) for line in data.decode('utf-8').splitlines() if line.strip()][args.request_offset:args.request_offset+c['N_REQUESTS']]
         if not samples: raise ValueError('Dataset contains no requests')
         write_json(out/'config/requests.json',samples)
         write_json(out/'config/dataset.json',{'path':c['DATASET'],'sha256':hashlib.sha256(data).hexdigest(),
+                                            'request_offset':args.request_offset,
                                             'used_by_model':args.mode=='real',
                                             'note':'Synthetic mode uses request indices, not natural language content'})
         jobs=[]
@@ -155,6 +161,7 @@ def main(argv=None):
                         live.run(strategy,adaptive,gamma,k,ex,index,scenario) if live else
                         run_simulation(c,strategy,adaptive,gamma,k,index,scenario))
                 record.update(id=name,mode=args.mode,study=study,method=method,scenario=scenario_name,
+                              dataset_index=args.request_offset+index,
                               configured_rtt_ms=scenario['rtt_ms'],repeat=repeat,request_index=index,
                               configured_gamma=gamma,configured_k=k,adaptive_window=adaptive)
                 enrich(record)

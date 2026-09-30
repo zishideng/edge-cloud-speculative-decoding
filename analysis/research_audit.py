@@ -82,19 +82,20 @@ def audit(source, output_root, sd_only=False):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    methods = [m for m in ('cloud_AR','A','B','C','Proposed') if any(r['method']==m for r in records)]
+    methods = [m for m in ('cloud_AR','A','B','C','D','Proposed') if any(r['method']==m for r in records)]
     baseline = [r for r in records if r['method'] in methods]
-    fig, axes = plt.subplots(1,2,figsize=(10,4))
-    for ax, metric, title in zip(axes, ('exact_match','task_quality'),
-                               ('Exact token agreement with AR','GSM8K final-answer accuracy')):
-        values = [mean(r[metric] for r in baseline if r['method']==m) for m in methods]
-        ax.bar(methods,values); ax.set_ylim(0,1.05); ax.set_title(title)
     n_prompts = len({r['request_index'] for r in records})
-    fig.suptitle(f'Descriptive diagnostics: {n_prompts} prompts; pooled descriptive rates, not independent trials')
-    fig.tight_layout()
-    fig.savefig(out/'figures/correctness.png',dpi=160)
-    fig.savefig(out/'figures/correctness.svg')
-    plt.close(fig)
+    if not sd_only:
+        fig, axes = plt.subplots(1,2,figsize=(10,4))
+        for ax, metric, title in zip(axes, ('exact_match','task_quality'),
+                                   ('Exact token agreement with AR','GSM8K final-answer accuracy')):
+            values = [mean(r[metric] for r in baseline if r['method']==m) for m in methods]
+            ax.bar(methods,values); ax.set_ylim(0,1.05); ax.set_title(title)
+        fig.suptitle(f'Descriptive diagnostics: {n_prompts} prompts; pooled descriptive rates, not independent trials')
+        fig.tight_layout()
+        fig.savefig(out/'figures/correctness.png',dpi=160)
+        fig.savefig(out/'figures/correctness.svg')
+        plt.close(fig)
     # Primary outcomes after the researcher clarified that token equality is not required.
     fig, axes = plt.subplots(1,2,figsize=(12,4))
     scenarios=sorted({r['scenario'] for r in baseline})
@@ -115,10 +116,10 @@ def audit(source, output_root, sd_only=False):
     lines = ['# Task-quality and performance evidence audit', '', f'Source: `{source}`', '',
         f'Records: {len(records)}; independent prompts: {len({r["request_index"] for r in records})}.',
         'Repeated prompts and network scenarios must not be counted as independent quality samples.', '',
-        '| Method | Runs | Exact matches | Accuracy |', '|---|---:|---:|---:|']
+        '| Method | Runs | Mean TPS | Accuracy |', '|---|---:|---:|---:|']
     for method in methods:
         group = [r for r in baseline if r['method']==method]
-        lines.append(f'| {method} | {len(group)} | {sum(r["exact_match"] for r in group)} | '
+        lines.append(f'| {method} | {len(group)} | {mean(r["tokens_per_second"] for r in group):.3f} | '
                      f'{mean(r["task_quality"] for r in group):.6f} |')
     lines += ['', '## Task quality and performance by condition', '',
         '| Scenario | Method | Requests | Latency mean (s) | TPS mean | TPS median | TPS std | Accuracy | Truncation |',
@@ -138,6 +139,8 @@ def audit(source, output_root, sd_only=False):
         'Token equality is diagnostic, not a requirement. Task quality and latency/throughput are primary.',
         'Cloud AR TTFT/TPOT are unavailable for its non-streaming endpoint; no SD component profile is assigned to AR.',
         'Source files were not rewritten. SHA-256 provenance is in config/source_manifest.json.']
+    if sd_only:
+        lines = [line for line in lines if not line.startswith('Cloud AR TTFT/TPOT')]
     if oracle_rows:
         lines += ['', '## Optimistic acceptance-only trace replay', '',
             f'{sum(r["trace_oracle_vs_ar"]<1 for r in oracle_rows)}/{len(oracle_rows)} SD traces remain below paired cloud AR throughput',

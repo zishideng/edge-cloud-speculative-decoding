@@ -260,3 +260,22 @@ Do not use direct cloud AR as an acceptance criterion or require beating it.
 Retain existing AR observations as historical evidence. Main comparisons are
 A/B SD baselines and Proposed component ablations, with task quality reported.
 R009 compares Proposed against its own unchanged n_probs=1 control and continues.
+
+### Experiment R010 — Held-out controller ablation (pre-registered)
+
+Hypothesis: jointly adapting K and draft length adds throughput beyond adapting
+length alone, or fixed-K relaxed acceptance with adaptive length. Existing pilot
+did not establish a gain against B; only ~1% of accepted tokens were relaxed.
+Compare B (strict/adaptive window), D (fixed K=2/adaptive window), and Proposed
+(joint adaptation). Use GSM8K rows 8–15, disjoint from tuning pilot rows 0–7,
+2 repeats, 512-token cap, low/high injected delays 2/100 ms, seed 42.
+All three methods use the SAME draft telemetry setting; R009's decision chooses
+whether that common setting is 0 or historical 1. This cannot attribute a
+telemetry improvement selectively to Proposed. No direct cloud speed baseline.
+Primary comparisons: Proposed vs B and vs D by condition, paired TPS, latency,
+answer quality and truncation. Report both comparisons including null results.
+At least 5% mean TPS gain with positive prompt-bootstrap lower limit is the
+practical speed threshold; observed quality loss prevents an unqualified win.
+This remains exploratory (8 new independent prompts), not a noninferiority trial.
+Decision: pending; run after R009 finishes. Optional method D and dataset offset
+are added to the standard runner so all variants share the measurement path.

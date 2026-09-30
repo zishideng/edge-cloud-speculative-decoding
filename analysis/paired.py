@@ -8,7 +8,7 @@ from common.metrics import percentile
 def paired_comparisons(records, seed=42, draws=2000):
     output = []
     for scenario in sorted({r['scenario'] for r in records}):
-        for baseline in ('A', 'B', 'C', 'gamma_4', 'cloud_AR'):
+        for baseline in ('A', 'B', 'C', 'D', 'gamma_4', 'cloud_AR'):
             groups = {method: {(r['request_index'], r['repeat']): r for r in records
                                if r['scenario'] == scenario and r['method'] == method}
                       for method in ('Proposed', baseline)}
