@@ -21,6 +21,7 @@ class SmartEdgeClient(EdgeClient):
         super().__init__(draft_url)
         self.config = config if config is not None else load_config()
         self.seed = self.config['SEED']
+        self.draft_n_probs = self.config.get('DRAFT_N_PROBS', 1)
 
     def generate(self, messages, verifier, gamma=None, max_tokens=512,
                  temperature=0.0, eos_id=None, no_think=False,

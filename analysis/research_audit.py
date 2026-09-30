@@ -16,7 +16,7 @@ def summarize(values):
                 min=min(values), max=max(values), n=len(values))
 
 
-def audit(source, output_root):
+def audit(source, output_root, sd_only=False):
     out = create_output(output_root)
     records, provenance = [], []
     for path in sorted((source/'raw').glob('*.json')):
@@ -24,7 +24,12 @@ def audit(source, output_root):
         record = json.loads(data)
         if 'method' not in record or 'rounds' not in record:
             continue
+        if sd_only and record['method'] == 'cloud_AR':
+            continue
         record['exact_match'] = record['output_ids'] == record['reference_ids']
+        round_ms = sum(row['round_total_ms'] for row in record['rounds'])
+        record['trace_oracle_tokens_per_second'] = (
+            1000*sum(row['n_proposed']+1 for row in record['rounds'])/round_ms if round_ms else None)
         for key in ('draft_ms', 'cloud_verify_ms', 'cloud_queue_ms', 'network_rtt_ms',
                     'serialize_ms', 'deserialize_ms', 'round_total_ms'):
             record['sum_'+key] = sum(row[key] for row in record['rounds'])
@@ -45,7 +50,7 @@ def audit(source, output_root):
     for (scenario, method), group in sorted(groups.items()):
         for metric in ('wall_time_s', 'tokens_per_second', 'ttft_ms', 'tpot_ms',
                        'task_quality', 'reference_quality', 'exact_match', 'accepted_proposed_ratio',
-                       'relaxed_acceptance_rate', 'truncated', 'quality_spent'):
+                       'relaxed_acceptance_rate', 'truncated', 'quality_spent','trace_oracle_tokens_per_second'):
             values = [r[metric] for r in group if r.get(metric) is not None]
             if values:
                 summary.append(dict(scenario=scenario, method=method, metric=metric,
@@ -63,6 +68,17 @@ def audit(source, output_root):
     write_csv(out/'tables/profile.csv', profile)
     write_csv(out/'tables/paired.csv', paired_comparisons(records))
     write_csv(out/'tables/requests.csv', records)
+    cloud = {(r['scenario'],r['repeat'],r['request_index']):r for r in records if r['method']=='cloud_AR'}
+    oracle_rows=[]
+    for r in records:
+        ar=cloud.get((r['scenario'],r['repeat'],r['request_index']))
+        if ar and r['trace_oracle_tokens_per_second'] is not None:
+            oracle_rows.append(dict(id=r['id'],scenario=r['scenario'],method=r['method'],
+                prompt_index=r['request_index'],repeat=r['repeat'],measured_tps=r['tokens_per_second'],
+                trace_oracle_tps=r['trace_oracle_tokens_per_second'],cloud_ar_tps=ar['tokens_per_second'],
+                trace_oracle_vs_ar=r['trace_oracle_tokens_per_second']/ar['tokens_per_second']))
+    if oracle_rows:
+        write_csv(out/'tables/trace_oracle.csv',oracle_rows)
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -74,12 +90,29 @@ def audit(source, output_root):
         values = [mean(r[metric] for r in baseline if r['method']==m) for m in methods]
         ax.bar(methods,values); ax.set_ylim(0,1.05); ax.set_title(title)
     n_prompts = len({r['request_index'] for r in records})
-    fig.suptitle(f'Historical audit: {n_prompts} prompts; pooled descriptive rates, not independent trials')
+    fig.suptitle(f'Descriptive diagnostics: {n_prompts} prompts; pooled descriptive rates, not independent trials')
     fig.tight_layout()
     fig.savefig(out/'figures/correctness.png',dpi=160)
     fig.savefig(out/'figures/correctness.svg')
     plt.close(fig)
-    lines = ['# Historical evidence audit', '', f'Source: `{source}`', '',
+    # Primary outcomes after the researcher clarified that token equality is not required.
+    fig, axes = plt.subplots(1,2,figsize=(12,4))
+    scenarios=sorted({r['scenario'] for r in baseline})
+    width=.8/max(1,len(scenarios))
+    for si,scenario in enumerate(scenarios):
+        for ax,metric,title in zip(axes,('tokens_per_second','task_quality'),
+                                   ('Request throughput','GSM8K final-answer accuracy')):
+            values=[mean(r[metric] for r in baseline if r['method']==m and r['scenario']==scenario) for m in methods]
+            ax.bar([i+si*width for i in range(len(methods))],values,width=width,label=scenario)
+            ax.set_xticks([i+(len(scenarios)-1)*width/2 for i in range(len(methods))],methods)
+            ax.set_title(title)
+    axes[0].set_ylabel('Tokens/s');axes[1].set_ylim(0,1.05);axes[0].legend()
+    fig.suptitle(f'{n_prompts} independent prompts; descriptive means (paired uncertainty in tables)')
+    fig.tight_layout()
+    for extension in ('png','svg'):
+        fig.savefig(out/'figures'/f'quality_performance.{extension}',dpi=160)
+    plt.close(fig)
+    lines = ['# Task-quality and performance evidence audit', '', f'Source: `{source}`', '',
         f'Records: {len(records)}; independent prompts: {len({r["request_index"] for r in records})}.',
         'Repeated prompts and network scenarios must not be counted as independent quality samples.', '',
         '| Method | Runs | Exact matches | Accuracy |', '|---|---:|---:|---:|']
@@ -105,6 +138,14 @@ def audit(source, output_root):
         'Token equality is diagnostic, not a requirement. Task quality and latency/throughput are primary.',
         'Cloud AR TTFT/TPOT are unavailable for its non-streaming endpoint; no SD component profile is assigned to AR.',
         'Source files were not rewritten. SHA-256 provenance is in config/source_manifest.json.']
+    if oracle_rows:
+        lines += ['', '## Optimistic acceptance-only trace replay', '',
+            f'{sum(r["trace_oracle_vs_ar"]<1 for r in oracle_rows)}/{len(oracle_rows)} SD traces remain below paired cloud AR throughput',
+            'even when every recorded round is credited with gamma+1 tokens at its recorded cost.',
+            'This deliberately optimistic replay removes all draft rejection and excludes request setup costs.',
+            'It freezes the observed gamma, context and timing trajectories. It is NOT a universal upper bound:',
+            'a new policy can change future contexts, round costs, cache behavior and stopping length.',
+            'The replay tests whether acceptance improvements alone are sufficient on the recorded cost trajectories.']
     (out/'report/audit.md').write_text('\n'.join(lines)+'\n')
     print(out.resolve())
     return out
@@ -114,5 +155,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
     parser.add_argument('--output-root', default='results')
+    parser.add_argument('--sd-only', action='store_true', help='Compare speculative-decoding methods only')
     args = parser.parse_args()
-    audit(args.source, args.output_root)
+    audit(args.source, args.output_root, args.sd_only)

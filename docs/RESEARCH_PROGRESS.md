@@ -1,6 +1,6 @@
 # 2026-09-28 研究进展与复现入口
 
-当前阶段是 baseline、任务质量和性能实验，尚未达到论文整理条件。研究者明确要求
+当前阶段是 baseline、任务质量和性能实验，尚未达到论文整理条件。2026-09-30 研究者进一步明确：只比较相对推测解码的速度；直接云端生成不作为目标或验收基线。研究者明确要求
 不以严格 token 一致作为目标；算法操作正确性、任务质量、延迟和吞吐量是主要标准。
 token 差异仅作为描述性诊断。所有正结果、负结果和启动失败均保留。
 
@@ -51,13 +51,13 @@ python -m experiments.target_path_audit --n 4 --repeats 3 \
   --position-selection low_margin
 
 # 每次分析也创建独立目录，不覆盖源实验
-python -m analysis.research_audit results/20260922_165127_613688_bbf68018
+python -m analysis.research_audit results/20260922_165127_613688_bbf68018 --sd-only
 python -m analysis.strict_report results/<strict_diagnostic_run>
 python -m analysis.target_path_report results/<target_path_run>
 
-# 当前优先实验：8 道题、两次重复、两种 RTT，五种方案（160 组）
+# 当前优先实验：8 道题、两次重复、两种 RTT，四种 SD 方案（128 组；历史完整运行另含 AR 对照）
 python -m experiments.run --mode real --config configs/research.pilot.json \
-  --methods cloud_AR A B C Proposed
+  --methods A B C Proposed
 ```
 
 生成器保存实际模板和 token IDs；模板可能包含日期，复现旧前缀应使用保存的 IDs，
@@ -84,5 +84,16 @@ compute capability ≥ 8.0；需核对实际部署版本、GPU 和 AWQ 模型是
 更换精度、缓存、模型与版本后把变化归因于某一项。保留原始配置的输出、耗时和质量结果。
 这些诊断不作为性能实验准入条件。质量保持须由任务评分支持，不能由本地 regret 预算推断。
 
-论文所需的更大独立样本、质量非劣性验证、云端 AR 性能基线、不同模型对、资源/能耗
+论文所需的更大独立样本、质量非劣性验证、不同模型对、资源/能耗
 和部署环境控制仍待完成。当前没有把这份阶段性诊断包装成论文级结果。
+
+## 2026-09-30 续研结果
+
+160 请求的历史 pilot 已全部完成，结果已另生成只比较 SD 的报告，保留原报告。
+Proposed 对 A 的配对吞吐提升：低额外延迟约 4.9%，高额外延迟约 22.8%；
+对 B 的提升区间均跨零，尚不能证明联合 K 控制优于单独自适应窗口。
+这里的 low/high 是额外注入 2/100 ms，并非测得的物理 RTT。
+
+关闭未使用草稿概率返回的微基准有 440 对，草稿调用缩短约 7.36%。
+正在进行同日配对的端到端验证：两组均为 Proposed，仅改变 DRAFT_N_PROBS。
+历史默认值保持 1，候选值为 0。原始请求、配置及源码保存在 draft_payload_e2e 子目录。

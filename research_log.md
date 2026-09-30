@@ -194,3 +194,69 @@ concurrent main benchmark. Acceptance threshold: >=3% draft latency reduction
 and a prompt-cluster paired CI excluding zero, followed by real end-to-end task
 quality/performance validation. Negative results are retained. This is an
 engineering ablation, not by itself a publication contribution. Decision: pending.
+
+### Analysis R008 — Acceptance-only optimistic trace replay (pre-registered)
+
+Hypothesis: improving acceptance alone cannot close the observed gap to cloud AR
+on this deployment. For every completed R006 SD request, credit each measured
+round with gamma+1 output tokens while retaining its measured round cost, then
+compare that optimistic rate to its paired cloud_AR request. Exclude request
+setup cost, making the projection favorable to SD. Report all pairs.
+This freezes measured trajectories and is not a general upper bound: policy
+changes can change context length, later round costs and cache behavior. It is
+an explanatory replay, never a measured optimization result. Decision: pending.
+
+### Literature audit — contribution boundary
+
+Primary-source review is saved in `docs/RELATED_WORK_AUDIT.md`. Probability-ratio
+lossy acceptance plus adaptive drafting, and communication-aware draft-length
+selection, already have close prior work. A local telemetry optimization or
+a single-device negative latency result is not sufficient evidence of novelty.
+Continue R006/R007; do not replace the objective with multi-tenant serving
+without researcher agreement. No experimental outcome is inferred from papers.
+
+### Source audit — cloud verifier cost
+
+Upstream vLLM v0.26.0 defaults to bypassing prefix-cache reads for prompt
+logprobs, which the current verifier requests across the complete context.
+See `docs/VERIFIER_COST_AUDIT.md` and preserved source hashes. This is a
+deployment-specific bottleneck hypothesis; remote installed source was not
+inspected and no cloud-side causal intervention was run. Do not generalize
+the current HTTP result to native suffix-scoring or all distributed SD.
+
+### R006 / R007 / R008 results — reviewed 2026-09-30
+
+R006: 160/160 requests completed without failures. Eight independent prompts.
+Proposed vs A paired throughput gains: low +4.94% (95% descriptive prompt
+bootstrap +0.07 to +9.28%), high +22.77% (+15.43 to +29.71%). Against B,
+intervals include zero in both scenarios. Pooled task accuracy: AR 29/32,
+A 28/32, B 27/32, C 24/32, Proposed 27/32. These are repeated observations,
+not 32 independent quality examples. Cloud AR remains roughly 10–12x faster.
+R008: all 128 SD traces remain below paired AR even in optimistic fixed-cost
+full-acceptance replay. This is deployment-specific, not a general SD bound.
+R007: 440 complete pairs, no failures; n_probs=0 draft latency reduction 7.36%,
+4-prompt bootstrap [6.09%, 8.51%]. All pairs emitted matching token IDs,
+a descriptive finding. ACCEPT microbenchmark hypothesis; end-to-end pending.
+Sources: quality_pilot_analysis and draft_payload_analysis under the research root.
+
+### Experiment R009 — End-to-end draft telemetry ablation (pre-registered)
+
+Hypothesis: R007's saved draft cost produces measurable Proposed end-to-end
+throughput gain without an observed task-quality regression. Only n_probs changes.
+Use first 8 GSM8K pilot prompts, 2 repeats, 512 cap, low injected RTT 2ms,
+randomized prompt order and paired variant order (seed 42), 32 requests.
+Same-day paired controls avoid comparing September 30 directly with September 28.
+Primary threshold: >=2% paired TPS gain and prompt-cluster CI low >0; report
+quality changes and truncations separately. Small pilot cannot certify formal
+quality noninferiority. Default n_probs remains 1 pending this result.
+Command: python -m experiments.draft_payload_e2e --output-root
+results/research_20260928_135549/draft_payload_e2e
+Decision: pending. If unsupported, retain the negative end-to-end result.
+
+### Researcher scope clarification — 2026-09-30
+
+Only relative speculative-decoding performance is the optimization objective.
+Do not use direct cloud AR as an acceptance criterion or require beating it.
+Retain existing AR observations as historical evidence. Main comparisons are
+A/B SD baselines and Proposed component ablations, with task quality reported.
+R009 compares Proposed against its own unchanged n_probs=1 control and continues.

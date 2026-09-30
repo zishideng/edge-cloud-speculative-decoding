@@ -184,7 +184,7 @@ class EdgeClient:
             "temperature": float(temperature),
             "return_tokens": True,
             "cache_prompt": True,
-            "n_probs": 1,
+            "n_probs": getattr(self, 'draft_n_probs', 1),
             "seed": getattr(self, 'seed', 42),
             # Stop at Llama-3 turn boundaries so we don't keep generating
             # extra assistant turns after the first complete answer.

@@ -29,6 +29,8 @@ REQUIRED = [
 
 
 def validate(c):
+    if type(c.get('DRAFT_N_PROBS', 1)) is not int or c.get('DRAFT_N_PROBS', 1) not in (0, 1):
+        raise ValueError('DRAFT_N_PROBS must be 0 or 1')
     missing = [k for k in REQUIRED if c.get(k) is None]
     if missing:
         raise ValueError('请填写实验配置参数: ' + ', '.join(missing))
