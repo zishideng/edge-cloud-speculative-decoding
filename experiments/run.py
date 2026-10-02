@@ -80,6 +80,7 @@ def main(argv=None):
     parser.add_argument('--verbose-rounds',action='store_true')
     parser.add_argument('--methods', nargs='+', help='Subset of method names; real mode additionally supports cloud_AR')
     parser.add_argument('--request-offset', type=int, default=0, help='Skip dataset rows for disjoint confirmation prompts')
+    parser.add_argument('--lookahead', type=int, default=5)
     args=parser.parse_args(argv)
     out=create_output(args.output_root)
     print(f'Artifacts: {out.resolve()}', flush=True)
@@ -89,6 +90,10 @@ def main(argv=None):
         c=load_config(args.config); c['VERBOSE_TOKENS'] |= args.verbose_tokens
         selected = variants(c)
         if args.methods:
+            if 'Lookahead' in args.methods:
+                if args.mode != 'real' or args.lookahead < 1:
+                    raise ValueError('Lookahead requires real mode and positive --lookahead')
+                selected.append(('lookahead','Lookahead','lookahead',False,c['GAMMA_INITIAL'],1))
             if 'D' in args.methods:
                 selected.append(('ablation','D','fixed',True,c['GAMMA_INITIAL'],c['FIXED_K']))
             if 'cloud_AR' in args.methods:
@@ -119,7 +124,8 @@ def main(argv=None):
                          ('integration',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_integration.py','-v']),
                          ('p0',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_p0.py','-v']),
                          ('metadata',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_draft_metadata.py','-v']),
-                         ('research',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_research.py','-v'])]:
+                         ('research',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_research.py','-v']),
+                         ('lookahead',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_lookahead.py','-v'])]:
             print(f'Checking {name}...', flush=True)
             p=subprocess.run(cmd,capture_output=True,text=True,encoding='utf-8',errors='replace')
             (out/'logs'/f'{name}.log').write_text(p.stdout+p.stderr,encoding='utf-8')
@@ -157,7 +163,8 @@ def main(argv=None):
             name=f'{scenario_name}_{repeat}_{method}_{index}'
             print(f'[{job_index}/{len(jobs)}] {name}: starting', flush=True)
             try:
-                record=(live.run_cloud_ar(ex,index,scenario) if strategy=='cloud_ar' else
+                record=(live.run_lookahead(ex,index,scenario,gamma,args.lookahead) if strategy=='lookahead' else
+                        live.run_cloud_ar(ex,index,scenario) if strategy=='cloud_ar' else
                         live.run(strategy,adaptive,gamma,k,ex,index,scenario) if live else
                         run_simulation(c,strategy,adaptive,gamma,k,index,scenario))
                 record.update(id=name,mode=args.mode,study=study,method=method,scenario=scenario_name,

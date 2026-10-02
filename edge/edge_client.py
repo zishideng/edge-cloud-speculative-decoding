@@ -188,7 +188,7 @@ class EdgeClient:
             "seed": getattr(self, 'seed', 42),
             # Stop at Llama-3 turn boundaries so we don't keep generating
             # extra assistant turns after the first complete answer.
-            "stop": ["<|eot_id|>", "<|end_of_text|>"],
+            "stop": getattr(self, 'stop_strings', ["<|eot_id|>", "<|end_of_text|>"]),
         }
         if temperature == 0.0:
             payload.update({

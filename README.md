@@ -179,181 +179,62 @@ python -m analysis.make_results_index results --out-md results/RESULTS_INDEX.md
 - **Cloud**:H200 / RTX 3080,vLLM
 - 模型对见 `configs/models.yaml`
 
-## 一键实验：运行哪些任务、生成哪些结果
-
-在 Jetson 的项目根目录运行：
+## 一键实验与最终汇报
 
 ```bash
-# 连接已启动的边缘草稿服务和云端验证服务
+# 查看计划，不调用模型
+bash run_all_experiments.sh --mode real --plan
+# 推荐：精简完整实验，默认 96 次计时请求
 bash run_all_experiments.sh --mode real
-
-# 使用自己的实验配置
-bash run_all_experiments.sh --mode real --config configs/my-experiment.json
-
-# 不连接真实模型，使用合成模型与虚拟时间验证流程
-bash run_all_experiments.sh --mode simulate
+# 连通性和输出检查：6 次请求，输出上限 64 token
+bash run_all_experiments.sh --mode real --profile smoke
+# 保留参数扫描的完整套件
+bash run_all_experiments.sh --mode real --profile full
 ```
 
-不指定 `--mode` 时默认是 `simulate`。Windows 入口为 `run_all_experiments.ps1`。
-脚本连接现有服务，不负责启动云端或边缘模型。默认参数见
-[experiment.defaults.json](configs/experiment.defaults.json)，详细算法和计时定义见
-[实验系统说明](docs/EXPERIMENT_SYSTEM.md)。
+默认 quick 使用 4 道题、2 次重复、2 个网络条件（额外注入 2/100 ms 延迟），
+比较 A（严格接受、固定 γ）、B（严格接受、自适应 γ）、C（固定 K/γ）、
+D（固定 K、自适应 γ）、Proposed（联合自适应 K/γ）、Lookahead（A 加固定提前草拟 h）。
+默认 γ=4、h=5、输出上限 512 token。只比较推测解码方案；质量参照请求不作为云端速度基线。
+full 额外扫描配置中的 γ/K。快速检查仍保留必要的代码与协议测试。
 
-### 1. 数据集任务
-
-每次运行使用 `TASK` 和 `DATASET` 指定的一个任务；不会自动轮流运行全部数据集。
-
-| 任务 | 本地数据文件 | 生成内容及当前评价方式 |
-|---|---|---|
-| `gsm8k`（默认） | `common/data/gsm8k_test_50.jsonl` | 数学解题文本；提取 `Final answer:` 或 `####` 后的数字，与标准答案比较 |
-| `humaneval` | `common/data/humaneval_30.jsonl` | 代码续写；保存输出与参照的文本/token 差异，目前不执行代码测试，任务质量为 `null` |
-| `mtbench` | `common/data/mtbench_30.jsonl` | 使用首轮问题生成回复；目前不运行多轮对话或外部裁判，任务质量为 `null` |
-
-默认取 GSM8K 文件的 **前 4 题**（`N_REQUESTS=4`），每次最多生成 **512 个 token**
-（`MAX_TOKENS=512`）。仍需检查截断率与答案提取率；未提取到最终数字时
-GSM8K 得分为 0。`simulate` 不对这些自然语言题目做模型推理，其任务质量指标为 `null`。
-
-### 2. 执行阶段与实验方案
-
-脚本依次执行：记录配置与环境 → 静态检查 → 核心单元测试 → HTTP 整合测试 →
-真实服务及模型词表/协议检查（仅 `real`）→ 批量推理 → 汇总表格 → 绘图与报告。
-前置检查失败时不会开始推理。
-
-`gamma` 表示一轮提出多少个草稿 token；`K` 表示目标模型允许接受的候选排名范围。
-`K=1` 为严格接受，`K>1` 的接受仍受概率、置信度和累计质量预算限制。
-
-| 实验类别 / 结果中的 `method` | 默认设置 | 要观察的问题 |
-|---|---|---|
-| 基线 A / `A` | 严格接受，固定 gamma=2 | 固定窗口的基础性能 |
-| 基线 B / `B` | 严格接受，自适应 gamma（1–8，初值 2） | 只调整窗口能否改善吞吐与延迟 |
-| 基线 C / `C` | 固定 K=2，固定 gamma=2；预算收紧时退回 K=1 | 受质量约束的宽松接受效果 |
-| 联合控制 / `Proposed` | 自适应 K（1–4）及 gamma（1–8） | 联合调整接受范围和窗口的表现 |
-| 窗口扫描 / `gamma_1`、`gamma_2`、`gamma_4`、`gamma_8` | 严格接受，分别固定窗口 | 哪个扫描窗口实测最好，数学估计是否接近 |
-| K 扫描 / `k_1`、`k_2`、`k_3`、`k_4` | 固定 gamma=2，分别设置 K；仍受预算限制 | 接受率、速度与质量变化的关系 |
-
-真实模式还会为每道题通过云端 `/generate` 生成一次严格贪心参照，并在本次运行中缓存复用。
-参照的 token 和文本保存在每份对应的 `raw/*.json` 中，不单独计入下列 672 组实验。
-
-### 3. 网络情境与默认任务数量
-
-每种实验方案都会在以下 7 种情境中运行。表中数值是**额外注入的延迟**，真实网络和服务耗时还会叠加；
-真实模式使用应用层等待模拟网络条件，不是操作系统级流量整形。
-
-| 情境 | 默认注入设置 |
-|---|---|
-| `low` | RTT 2 ms |
-| `medium` | RTT 30 ms |
-| `high` | RTT 100 ms |
-| `jitter` | RTT 30 ms，抖动 ±25 ms |
-| `bandwidth` | RTT 30 ms，按 1 Mbps 估算传输等待 |
-| `burst` | RTT 5 ms；从轮次索引 4（第 5 轮）起额外增加 100 ms |
-| `queue` | RTT 10 ms，服务端排队注入 20 ms、抖动 ±15 ms |
-
-默认总数为：**7 种情境 × 2 次重复 ×（4 个基线 + 4 个 gamma 扫描 + 4 个 K 扫描）× 4 道题 = 672 组**。
-同一重复内方案顺序按固定种子打乱，所以终端不一定从 A 开始。修改 `N_REQUESTS`、`REPEATS`、
-扫描列表或 `NETWORK_SCENARIOS` 会改变总数；`N_REQUESTS` 超过数据集长度时以实际题数为准。
-这里的一组包含多轮 draft → verify HTTP 调用，并非一次 HTTP 请求。
-
-### 4. 运行中怎样看进度
-
-启动后会立即打印结果目录和检查阶段。每组请求开始与完成时打印进度，例如：
+脚本自动完成检查、服务校验、实验、统计、图表和最终汇报；失败也会生成标注未完成的汇报，
+并返回非零退出码。服务需要事先部署并保持独占；脚本不负责下载或启动模型。
 
 ```text
-Running 672 requests. Mode=real
-[1/672] low_0_gamma_8_0: starting
-[1/672] low_0_gamma_8_0: OK 48 tokens, 7.61s, 6.31 tokens/s
+results/suites/<运行编号>/
+  SUMMARY.md             中文总结在前，英文在后，优先看这个文件
+  tables/                方法指标、配对吞吐比较
+  figures/               吞吐图 PNG/SVG
+  logs/run.log           执行日志
+  config/                计划、配置、模型注册表、代码快照
+  report/                完成状态与机器可读总结
+  runs/<编号>/raw/        逐请求原始证据及底层实验输出
 ```
 
-`low_0_gamma_8_0` 表示 low 情境、第 0 次重复、gamma=8 扫描、第 0 道题（编号从 0 开始）。
-失败时打印 `FAILED`，保存异常堆栈并继续其他请求。
-加 `--verbose-rounds` 会在**每组请求完成后**打印该请求各轮的 K、gamma、通信估计和验证延迟；
-逐轮原始数据本身始终保存，不需要开启此选项。
+每次运行创建独立目录，历史研究结果不覆盖。按题目聚类计算配对增益及 bootstrap 区间；
+4 道题只适合探索，不足以证明泛化或质量非劣性。报告列出任务正确率和截断数；
+没有已实现评分器的任务显示 N/A。smoke 和 simulate 不输出真实加速结论。
+提前草拟计时包含后台任务收尾。模拟流程可用 `--mode simulate --profile smoke`，不包含 Lookahead。
 
-### 5. 结果目录与生成时间
+### 更换模型对
 
-每次运行创建独立的 `results/YYYYMMDD_HHMMSS_微秒_唯一后缀/`。
-**不用全部跑完才有结果：每完成一组请求就写入一个 `raw/*.json`；表格和图表在批量推理结束后生成。**
-
-| 路径 | 保存内容 | 生成时间 |
-|---|---|---|
-| `config/resolved.json` | 合并后的完整实验参数 | 启动时 |
-| `config/environment.json` | Python、依赖版本、Git 状态及运行模式 | 启动时 |
-| `config/service_info.json` | 云端模型、词表、上下文上限及协议版本；仅真实模式 | 服务检查通过后 |
-| `config/requests.json`、`config/dataset.json` | 实际题目、数据路径与 SHA-256 摘要 | 推理开始前 |
-| `logs/static.log`、`unit.log`、`integration.log` | 三个前置检查阶段的输出 | 各检查完成后 |
-| `raw/<情境>_<重复>_<方案>_<题号>.json` | 生成文本/token、严格参照、请求指标、各轮时延、接受决策、控制器预测和质量预算 | 每组成功后立即写入 |
-| `logs/<请求名>.log`、`logs/pipeline.log` | 请求失败或整条流程异常的堆栈 | 对应错误发生时 |
-| `tables/requests.csv` | 每组请求一行：耗时、吞吐、TTFT、TPOT、接受率与质量差异等 | 批量推理结束后 |
-| `tables/rounds.csv` | 每轮一行：草稿/验证/通信/排队耗时、K、gamma 和决策 | 批量推理结束后 |
-| `tables/latency_summary.json`、`latency_summary.csv` | 延迟等指标的均值、P50/P95/P99、最小/最大值及样本数 | 汇总阶段 |
-| `tables/comparison.csv` | 按实验类别、情境、方案分别汇总的性能与质量指标 | 汇总阶段 |
-| `tables/window_estimates.json` | 数学估计窗口、实测扫描最佳窗口及两者差值 | 绘图阶段 |
-| `figures/*.png`、`figures/*.svg` | 下节所列 11 组图，每组两种格式，共 22 个文件 | 绘图阶段 |
-| `report/report.md`、`report/status.json` | 可阅读报告、检查退出码、成功数量、失败列表及中断标记 | 运行结束或捕获异常/中断时 |
-
-TTFT 是首批验证通过 token 可用的时间；TPOT 是后续 token 可用间隔的平均值。
-文本/token 差异使用序列比较，不等于语义准确率；质量预算限制的是 logprob regret，也不保证任务准确率不下降。
-总体汇总用于了解运行情况，比较方案时应优先看按情境分组的 `comparison.csv`。
-
-完整成功退出码为 0；出现失败为 1；Ctrl+C 中断为 130，并标记 `interrupted: true`。
-中断保留已经写入的原始结果，但不会自动补齐汇总与图表。失败批次可能只有部分文件，
-请先查看 `report/status.json`。运行期间不要清空该结果目录，否则后续写入与报告保存会失败。
-
-### 6. 生成的 11 组图
-
-以下文件名均同时提供 `.png` 和 `.svg`：
-
-| 文件名 | 图的含义 |
-|---|---|
-| `gamma_throughput` | 固定 gamma 与吞吐量的关系 |
-| `gamma_latency` | 固定 gamma 与整组请求耗时的关系 |
-| `k_acceptance` | 固定 K 与接受率的关系 |
-| `k_quality` | 固定 K 与任务质量下降的关系；缺少任务评分时使用 token 差异代理 |
-| `scheme_comparison` | A、B、C、Proposed 在各网络情境中的吞吐比较 |
-| `network_throughput` | 稳定延迟情境下，注入 RTT 与各方案吞吐的关系 |
-| `rtt_best_gamma` | 数学预测窗口与扫描网格内实测最佳窗口的比较 |
-| `window_error` | 预测窗口减去实测扫描最佳窗口的差值 |
-| `latency_percentiles` | 各方案每请求轮次延迟的均值、P95、P99，再按请求平均 |
-| `quality_speed_pareto` | 各情境内质量变化与吞吐的折中关系 |
-| `controller_trace` | Proposed 第一题、第一次重复的 K、gamma、RTT、接受率和质量风险随时间变化 |
-
-查看结果时，先读 `report/report.md`，再用 `tables/comparison.csv` 比较方案，
-需要追查某次决策时打开对应的 `raw/*.json`。已有完整原始数据时可重新绘图：
+在 `configs/models.yaml` 或自己的 YAML 注册表添加模型对，然后运行：
 
 ```bash
-python -m analysis.make_figures results/<本次运行目录>
+bash run_all_experiments.sh --mode real \
+  --models-yaml configs/models.yaml --model-pair qwen3 \
+  --draft-url http://EDGE_HOST:8080 --cloud-url http://CLOUD_HOST:9090
 ```
 
-云端单机 AR/本地投机/n-gram 基线、旧 C1、异步预取、能耗和 SLO 实验仍需通过各自入口单独运行，
-不包含在此脚本的 672 组中。
+注册项必需字段为 `target`、`draft_gguf`、`eos_id`、`vocab_size`；可选 `stop_strings`
+控制文本停止标记，未设置则使用服务自身 EOS 行为。聊天模板由草拟服务提供。
+两端须部署匹配的模型并共享 token ID 语义。脚本检查目标模型标识和词表大小，
+但词表大小一致本身不能证明 tokenizer 一致；词表大小不同的模型对目前会被拒绝。
+每次运行选择一个模型对，其他模型对仍需实际验证。
 
-
-### P0 正确性与测量保护
-
-实验直接以 K=1 作为基线：A 为固定 gamma，B 为自适应 gamma。
-不再运行生成结果的一致性预检，也不会因输出与云端贪心参照不同而停止。
-云端参照仅用于质量评分和描述性差异统计，不作为实验准入条件。
-静态检查、单元测试、服务协议和词表检查仍然保留。
-
-`requests.csv` 和原始 JSON 增加 `stop_reason`、`truncated`、`answer_extracted`、
-`quality_status` 与对应参照字段。报告同时列出绝对准确率、参照准确率、提取率与截断率。
-缺少答案仍按 benchmark 错题计分，但与已完成的错误答案分开标记。
-参照全错时报告明确提示质量比较缺乏鉴别力；不能将零下降解释为质量无损。
-
-真实实验按每个服务地址获取主机本地进程锁，覆盖不同输出目录和项目副本；共享任一服务
-即拒绝并发运行，退出或进程终止后操作系统释放锁。锁文件保留不代表仍被占用。
-这不阻止其他主机或旧版客户端访问服务，远端仍须安排独占实验时段。
-`config/hardware_start.json`、`hardware_end.json` 保存运行主机的负载、可用 GPU/功耗模式快照；
-`service_info.json` 保存 target 运行库版本。快照不是全程监控，也不自动修改功耗或清空缓存；
-重复实验须保持相同功耗、时钟、缓存策略与服务负载，并另行记录远端硬件负载。
-
-完整默认套件现在为 672 组，外加参照请求。仅检查流程时显式使用：
-
-```bash
-bash run_all_experiments.sh --mode simulate --config configs/experiment.smoke.json
-```
-
-`tables/paired_comparison.csv` 将 Proposed 与 A/B/C/固定 gamma=4 按题目和重复次数配对，
-先在每题内平均，再按题目 bootstrap 计算 95% 区间；不把重复运行当作独立题目。
-吞吐指标为逐配对相对增益的均值，质量指标为准确率差；缺失配对被排除，表中记录样本数。
-模拟模式或不足两道题时不输出置信区间，小样本区间仅供描述。
+通过 `--n 8 --repeats 2 --gamma 4 --lookahead 5 --max-tokens 512 --request-offset 0`
+调整规模与参数。配置优先级为 profile 默认值 < `--config` JSON < 显式命令行参数；
+建议先用 `--plan` 确认实际请求数。`--output-root` 可指定输出父目录。
+底层 `python -m experiments.run` 保留原接口，一键入口使用 `experiments.suite`。
+Windows 对应入口为 `run_all_experiments.ps1 -Mode real -Profile quick -ModelPair llama3_awq`。

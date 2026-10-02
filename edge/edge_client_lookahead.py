@@ -110,6 +110,7 @@ class FixedLookaheadClient(SmartEdgeClient):
         self._worker = EdgeClient(self.draft_url)
         self._worker.seed = self.seed
         self._worker.draft_n_probs = self.draft_n_probs
+        self._worker.stop_strings = getattr(self, 'stop_strings', [])
         self._pool = ThreadPoolExecutor(max_workers=1)
         start = time.perf_counter()
         try:

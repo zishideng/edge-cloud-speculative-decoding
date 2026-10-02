@@ -352,3 +352,23 @@ has not been shown to outperform fixed lookahead. Larger disjoint prompts
 and repeated confirmation remain necessary. Sources: fixed_lookahead and
 fixed_lookahead_analysis under the research root. Decision: ACCEPT feasibility
 hypothesis for this pilot; do not claim general or paper-level validation.
+
+## 2026-10-02 — Compact configurable experiment suite
+
+Added `experiments.suite` as the shell/PowerShell entrypoint. Default real
+quick plan is 96 timed requests: six SD methods, four prompts, two repeats,
+two injected-delay conditions. Fixed lookahead is included; no direct-cloud
+speed baseline is selected. Configuration, service endpoints and model registry
+are selectable without editing the experiment code. Stop strings follow the
+selected model configuration. Each run writes a Chinese-first/English-second
+SUMMARY.md, paired tables, throughput figures, source/config snapshots and logs;
+failed runs are explicitly incomplete. Smoke/simulation cannot establish speedup.
+
+Validation: 70 unit/regression tests passed; git diff --check passed. The initial
+real smoke failed because the cloud endpoint refused connections. After the user
+restored cloud connectivity, all six real smoke requests completed successfully:
+`results/suite_validation/20261002_132440_305109_3322efdf/SUMMARY.md`.
+This checks real dispatch including lookahead and final report generation, not
+performance or task quality (64-token smoke cap). Full 96-request quick suite
+and other model pairs were not run in this implementation validation. PowerShell
+wrapper was updated but not executed on this Linux host.

@@ -60,6 +60,7 @@ def main():
         write_json(out/'config/service_info.json',live.info)
         live.client._session.close()
         live.client=FixedLookaheadClient(c['DRAFT_URL'],c,lookahead_tokens=0)
+        live.client.stop_strings=live.model.get('stop_strings', [])
         for scenario_name,scenario in c['NETWORK_SCENARIOS'].items():
             for repeat in range(args.repeats):
                 indices=list(range(len(samples)))

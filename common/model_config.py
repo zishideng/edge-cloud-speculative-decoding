@@ -25,6 +25,11 @@ except ImportError:
 
 
 def _find_yaml(explicit: Optional[str] = None) -> str:
+    requested = explicit or os.environ.get("SPECDECODE_MODELS_YAML")
+    if requested:
+        if not os.path.isfile(requested):
+            raise FileNotFoundError(f'Model registry does not exist: {requested}')
+        return requested
     cands = []
     if explicit:
         cands.append(explicit)

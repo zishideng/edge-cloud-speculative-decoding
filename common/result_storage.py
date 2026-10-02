@@ -6,6 +6,8 @@ def compact_record(record):
     compact = {k: v for k, v in record.items()
                if k not in ('rounds', 'output_ids', 'reference_ids', 'output_text', 'reference_text')}
     compact['rounds'] = []
+    if 'lookahead' in compact:
+        compact['lookahead'] = {k:v for k,v in compact['lookahead'].items() if k != 'events'}
     for row in record['rounds']:
         small = {k: v for k, v in row.items() if k not in ('decisions', 'controller')}
         small['controller'] = {'quality_risk': row['controller']['quality_risk']}

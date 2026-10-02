@@ -46,6 +46,7 @@ class LiveExperiment:
         self.client=SmartEdgeClient(c['DRAFT_URL'],c)
         self.remote=RemoteVerifier(c['CLOUD_URL'],c['REQUEST_TIMEOUT_S'])
         self.model=load_model_config(c['MODEL_PAIR'])
+        self.client.stop_strings = self.model.get('stop_strings', [])
         get_draft_vocab(self.client, required=True)
         self.remote.health()
         if not validate_pair(self.client,self.remote,self.model):
@@ -56,6 +57,20 @@ class LiveExperiment:
         self.info=info
         self.references={}
         self.reference_stops={}
+
+    def run_lookahead(self, example, index, scenario, gamma, lookahead):
+        from edge.edge_client_lookahead import FixedLookaheadClient
+        original = self.client
+        candidate = FixedLookaheadClient(self.c['DRAFT_URL'],self.c,lookahead)
+        candidate.stop_strings = self.model.get('stop_strings', [])
+        self.client = candidate
+        try:
+            record = self.run('strict',False,gamma,1,example,index,scenario)
+            record['lookahead'] = candidate.last_lookahead
+            return record
+        finally:
+            candidate._session.close()
+            self.client = original
 
     def messages(self,example):
         question=example.get('question') or example.get('prompt') or example.get('turns',[''])[0]
