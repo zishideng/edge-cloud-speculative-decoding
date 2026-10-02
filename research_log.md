@@ -372,3 +372,24 @@ This checks real dispatch including lookahead and final report generation, not
 performance or task quality (64-token smoke cap). Full 96-request quick suite
 and other model pairs were not run in this implementation validation. PowerShell
 wrapper was updated but not executed on this Linux host.
+
+## 2026-10-02 — Pause Proposed and inspect high-delay slowdown
+
+User requested temporarily excluding Proposed. Removed it from all one-command
+suite profiles, preserving the low-level implementation and historical data.
+Real quick now runs 80 requests; real smoke runs 5. Plan regression tests cover
+quick and full exclusion. Report definitions omit Proposed when unselected.
+
+Read-only analysis of results/suites/20261002_144828_552805_212067ad:
+actual gamma=4, h=2 (not default h=5), completed 96 historical requests.
+Lookahead low/high throughput 14.938/10.226 tokens/s; high remains +11.56%
+paired over A (9.160 tokens/s). Both A and Lookahead average 35.5 rounds/request.
+Injected delay averages 0.071 s low vs 3.550 s high: +3.479 s per request.
+Lookahead wall time 9.072 vs 13.344 s (+4.272 s); injection difference is about
+81% of that observed difference, not an additive causal decomposition because
+prefetch overlaps verification. Each condition generated 560 ahead tokens,
+reused 132 (23.6%), discarded 288 (51.4%); bridge/unused account for the rest.
+With h=2, a matching one-token bonus leaves at most one token for next-round
+reuse. Total foreground prefetch wait across 8 requests is 644.29 ms low vs
+5.19 ms high: unfinished background drafting is not the main high-delay bottleneck.
+Other timing differences need controlled repeated runs; no new speed claim.

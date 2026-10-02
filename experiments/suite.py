@@ -49,7 +49,7 @@ def main(argv=None):
     if args.lookahead<1 or args.request_offset<0:ap.error('lookahead must be positive; request-offset must be nonnegative')
     examples=[x for x in (ROOT/c['DATASET']).read_text().splitlines() if x.strip()]
     if args.request_offset+c['N_REQUESTS']>len(examples):ap.error('Requested prompt range exceeds dataset length')
-    methods=['A','B','C','D','Proposed']
+    methods=['A','B','C','D']  # Proposed temporarily excluded from the suite.
     if args.profile=='full':
         methods += [f'gamma_{g}' for g in c['GAMMA_SWEEP']]+[f'k_{k}' for k in c['K_SWEEP']]
     if args.mode=='real':methods.append('Lookahead')

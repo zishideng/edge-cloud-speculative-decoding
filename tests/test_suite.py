@@ -22,15 +22,17 @@ class SuiteTests(unittest.TestCase):
 
     def test_real_quick_and_simulation_scope(self):
         real = self.plan('--mode', 'real')
-        self.assertEqual(real['expected_requests'], 96)
+        self.assertEqual(real['expected_requests'], 80)
         self.assertIn('Lookahead', real['methods'])
+        self.assertNotIn('Proposed', real['methods'])
+        self.assertNotIn('Proposed', self.plan('--mode', 'real', '--profile', 'full')['methods'])
         sim = self.plan('--mode', 'simulate', '--profile', 'smoke')
-        self.assertEqual(sim['expected_requests'], 5)
+        self.assertEqual(sim['expected_requests'], 4)
         self.assertNotIn('Lookahead', sim['methods'])
 
     def test_explicit_size_overrides_profile(self):
         p = self.plan('--n', '3', '--repeats', '1', '--gamma', '6')
-        self.assertEqual(p['expected_requests'], 30)
+        self.assertEqual(p['expected_requests'], 24)
         self.assertEqual(p['gamma'], 6)
 
     def test_missing_registry_does_not_fall_back(self):

@@ -184,9 +184,9 @@ python -m analysis.make_results_index results --out-md results/RESULTS_INDEX.md
 ```bash
 # 查看计划，不调用模型
 bash run_all_experiments.sh --mode real --plan
-# 推荐：精简完整实验，默认 96 次计时请求
+# 推荐：精简完整实验，默认 80 次计时请求
 bash run_all_experiments.sh --mode real
-# 连通性和输出检查：6 次请求，输出上限 64 token
+# 连通性和输出检查：5 次请求，输出上限 64 token
 bash run_all_experiments.sh --mode real --profile smoke
 # 保留参数扫描的完整套件
 bash run_all_experiments.sh --mode real --profile full
@@ -194,7 +194,8 @@ bash run_all_experiments.sh --mode real --profile full
 
 默认 quick 使用 4 道题、2 次重复、2 个网络条件（额外注入 2/100 ms 延迟），
 比较 A（严格接受、固定 γ）、B（严格接受、自适应 γ）、C（固定 K/γ）、
-D（固定 K、自适应 γ）、Proposed（联合自适应 K/γ）、Lookahead（A 加固定提前草拟 h）。
+D（固定 K、自适应 γ）、Lookahead（A 加固定提前草拟 h）。
+Proposed 暂时不参与一键套件，底层实现和历史结果保留。
 默认 γ=4、h=5、输出上限 512 token。只比较推测解码方案；质量参照请求不作为云端速度基线。
 full 额外扫描配置中的 γ/K。快速检查仍保留必要的代码与协议测试。
 

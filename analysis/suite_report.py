@@ -97,4 +97,6 @@ def report(root):
             '网络参数是额外注入延迟；提前草拟端到端耗时包含后台任务收尾。',
             'Raw records: runs/*/raw; configuration and source snapshot: config; derived tables: tables.' if english else
             '原始数据：runs/*/raw；配置与代码快照：config；汇总表：tables。','']
+    if 'Proposed' not in plan.get('methods', []):
+        lines = [line.replace('Proposed: adaptive K/γ; ', '').replace('Proposed：联合自适应 K/γ；', '') for line in lines]
     (root/'SUMMARY.md').write_text('\n'.join(lines),encoding='utf-8')
