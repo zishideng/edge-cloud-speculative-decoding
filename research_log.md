@@ -393,3 +393,26 @@ With h=2, a matching one-token bonus leaves at most one token for next-round
 reuse. Total foreground prefetch wait across 8 requests is 644.29 ms low vs
 5.19 ms high: unfinished background drafting is not the main high-delay bottleneck.
 Other timing differences need controlled repeated runs; no new speed claim.
+
+## 2026-10-02 — Paired gamma 2/4/6 and lookahead sweep
+
+Added --gamma-lookahead-sweep to run fixed strict K=1 windows gamma=2,4,6
+with matching asynchronous h=gamma+1 (3,5,7). Six method identities are
+preserved in raw records and report pairs compare identical gamma only.
+The preceding window-only scope change is included: default suites exclude
+C/D/Proposed and K sweeps. CLI/README/PowerShell updated. Full 71-test suite
+passed before execution; subsequently added report pairing/figure regression
+and all 7 suite tests passed. PowerShell not executed on Linux.
+
+Executed 48 real requests (4 prompts, 1 repetition, low/high) with command:
+bash run_all_experiments.sh --mode real --gamma-lookahead-sweep 2 4 6 --repeats 1
+Output: results/suites/20261002_180445_474513_a82bf69f/SUMMARY.md
+All requests completed; all task scores 1, no truncations. Paired throughput
+gains for gamma 2/4/6 are -3.93/-15.41/-27.55% low and
++19.46/+8.14/+58.75% high. High gamma4 CI crosses zero. Highest observed high
+throughput is gamma6/h7 at 11.250 tokens/s; low is fixed gamma2 at 10.623.
+These are exploratory four-prompt, single-repeat results, not established
+optima. Gamma and h covary; separate effects cannot be inferred. Sequential
+method blocks and service-timing variation may confound between-method and
+historical-run comparisons. Repeat confirmation needed before claiming the
+large gamma6 speedup as stable. Original raw evidence and code snapshots kept.

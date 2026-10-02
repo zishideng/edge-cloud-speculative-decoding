@@ -13,6 +13,7 @@ param(
     [int]$N = 0,
     [int]$Repeats = 0,
     [int]$Gamma = 0,
+    [int[]]$GammaLookaheadSweep = @(),
     [int]$Lookahead = 5,
     [int]$MaxTokens = 0,
     [int]$RequestOffset = 0,
@@ -33,6 +34,7 @@ if ($DraftUrl) { $ExperimentArgs += @('--draft-url', $DraftUrl) }
 if ($CloudUrl) { $ExperimentArgs += @('--cloud-url', $CloudUrl) }
 if ($N) { $ExperimentArgs += @('--n', $N) }
 if ($Repeats) { $ExperimentArgs += @('--repeats', $Repeats) }
+if ($GammaLookaheadSweep.Count) { $ExperimentArgs += '--gamma-lookahead-sweep'; $ExperimentArgs += $GammaLookaheadSweep }
 if ($Gamma) { $ExperimentArgs += @('--gamma', $Gamma) }
 if ($MaxTokens) { $ExperimentArgs += @('--max-tokens', $MaxTokens) }
 $ExperimentArgs += @('--request-offset', $RequestOffset)

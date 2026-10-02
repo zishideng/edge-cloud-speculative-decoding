@@ -27,9 +27,11 @@ def report(root):
         table.append(dict(scenario=scenario,method=method,requests=len(rows),
             tps=mean(r['tokens_per_second'] for r in rows),latency_s=mean(r['wall_time_s'] for r in rows),
             quality=mean(scores) if scores else None,truncations=sum(bool(r.get('truncated')) for r in rows)))
+    comparisons=[('Lookahead','A'),('B','A'),('C','A'),('D','B'),('Proposed','B'),('Proposed','D')]
+    comparisons += [(m, 'gamma_'+m.split('_g')[1]) for m in plan.get('methods', []) if m.startswith('Lookahead_g')]
     pairs=[]
     for scenario in plan['scenarios']:
-        for candidate,control in [('Lookahead','A'),('B','A'),('C','A'),('D','B'),('Proposed','B'),('Proposed','D')]:
+        for candidate,control in comparisons:
             maps={m:{(r['request_index'],r['repeat']):r for r in records if r['method']==m and r['scenario']==scenario} for m in (candidate,control)}
             clustered=defaultdict(list)
             for key in sorted(maps[candidate].keys() & maps[control].keys()):
@@ -99,4 +101,11 @@ def report(root):
             '原始数据：runs/*/raw；配置与代码快照：config；汇总表：tables。','']
     if 'Proposed' not in plan.get('methods', []):
         lines = [line.replace('Proposed: adaptive K/γ; ', '').replace('Proposed：联合自适应 K/γ；', '') for line in lines]
+    if plan.get('lookahead_by_method'):
+        definitions='; '.join(f'{m}: γ={m.split("_g")[1]}, h={h}, K=1' for m,h in plan['lookahead_by_method'].items())
+        lines=[definitions+'; gamma_N: γ=N, h=0, K=1' if line.startswith(('A：','A:')) else line for line in lines]
+    for method, en, zh in [('C', 'C: fixed K/fixed γ; ', 'C：固定 K＋固定 γ；'),
+                            ('D', 'D: fixed K/adaptive γ; ', 'D：固定 K＋自适应 γ；')]:
+        if method not in plan.get('methods', []):
+            lines = [line.replace(en, '').replace(zh, '') for line in lines]
     (root/'SUMMARY.md').write_text('\n'.join(lines),encoding='utf-8')

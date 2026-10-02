@@ -24,6 +24,7 @@ def main(argv=None):
     ap.add_argument('--draft-url');ap.add_argument('--cloud-url')
     ap.add_argument('--n',type=int);ap.add_argument('--repeats',type=int)
     ap.add_argument('--max-tokens',type=int);ap.add_argument('--gamma',type=int)
+    ap.add_argument('--gamma-lookahead-sweep', nargs='+', type=int, help='Paired fixed gamma and lookahead h=gamma+1 sweep')
     ap.add_argument('--lookahead',type=int,default=5)
     ap.add_argument('--request-offset',type=int,default=0)
     ap.add_argument('--output-root',default='results/suites')
@@ -49,14 +50,21 @@ def main(argv=None):
     if args.lookahead<1 or args.request_offset<0:ap.error('lookahead must be positive; request-offset must be nonnegative')
     examples=[x for x in (ROOT/c['DATASET']).read_text().splitlines() if x.strip()]
     if args.request_offset+c['N_REQUESTS']>len(examples):ap.error('Requested prompt range exceeds dataset length')
-    methods=['A','B','C','D']  # Proposed temporarily excluded from the suite.
+    methods=['A','B']  # Window/lookahead study: all selected methods use strict K=1.
     if args.profile=='full':
-        methods += [f'gamma_{g}' for g in c['GAMMA_SWEEP']]+[f'k_{k}' for k in c['K_SWEEP']]
+        methods += [f'gamma_{g}' for g in c['GAMMA_SWEEP']]
     if args.mode=='real':methods.append('Lookahead')
+    if args.gamma_lookahead_sweep:
+        gs=list(dict.fromkeys(args.gamma_lookahead_sweep))
+        if any(g < c['GAMMA_MIN'] or g > c['GAMMA_MAX'] for g in gs):
+            ap.error('Sweep gamma outside configured bounds')
+        c['GAMMA_SWEEP']=gs
+        methods=[f'gamma_{g}' for g in gs]
+        if args.mode=='real':methods += [f'Lookahead_g{g}' for g in gs]
     model=load_model_config(c['MODEL_PAIR'],args.models_yaml) if args.mode=='real' or args.models_yaml else None
     plan=dict(mode=args.mode,profile=args.profile,model_pair=c['MODEL_PAIR'],methods=methods,
         prompts=c['N_REQUESTS'],repeats=c['REPEATS'],scenarios=c['NETWORK_SCENARIOS'],gamma=c['GAMMA_INITIAL'],
-        lookahead=args.lookahead,request_offset=args.request_offset,
+        lookahead=args.lookahead,lookahead_by_method={m:int(m.split('_g')[1])+1 for m in methods if m.startswith('Lookahead_g')},request_offset=args.request_offset,
         expected_requests=len(methods)*c['N_REQUESTS']*c['REPEATS']*len(c['NETWORK_SCENARIOS']),
         note='Simulation excludes asynchronous lookahead: no synthetic overlap speed claim.')
     print(json.dumps(plan,ensure_ascii=False,indent=2),flush=True)

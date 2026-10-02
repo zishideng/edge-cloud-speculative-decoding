@@ -184,20 +184,20 @@ python -m analysis.make_results_index results --out-md results/RESULTS_INDEX.md
 ```bash
 # 查看计划，不调用模型
 bash run_all_experiments.sh --mode real --plan
-# 推荐：精简完整实验，默认 80 次计时请求
+# 推荐：精简完整实验，默认 48 次计时请求
 bash run_all_experiments.sh --mode real
-# 连通性和输出检查：5 次请求，输出上限 64 token
+# 连通性和输出检查：3 次请求，输出上限 64 token
 bash run_all_experiments.sh --mode real --profile smoke
 # 保留参数扫描的完整套件
 bash run_all_experiments.sh --mode real --profile full
 ```
 
 默认 quick 使用 4 道题、2 次重复、2 个网络条件（额外注入 2/100 ms 延迟），
-比较 A（严格接受、固定 γ）、B（严格接受、自适应 γ）、C（固定 K/γ）、
-D（固定 K、自适应 γ）、Lookahead（A 加固定提前草拟 h）。
-Proposed 暂时不参与一键套件，底层实现和历史结果保留。
+比较 A（固定 γ）、B（自适应 γ）、Lookahead（A 加固定提前草拟 h）。
+全部使用严格接受 K=1，只研究窗口 γ 和提前草拟 h；C、D、Proposed 和 K 扫描不参与一键套件。
+底层实现和历史结果保留。
 默认 γ=4、h=5、输出上限 512 token。只比较推测解码方案；质量参照请求不作为云端速度基线。
-full 额外扫描配置中的 γ/K。快速检查仍保留必要的代码与协议测试。
+full 只额外扫描配置中的 γ，不扫描 K。h 通过 `--lookahead` 指定，目前不会自动扫描。快速检查仍保留必要的代码与协议测试。
 
 脚本自动完成检查、服务校验、实验、统计、图表和最终汇报；失败也会生成标注未完成的汇报，
 并返回非零退出码。服务需要事先部署并保持独占；脚本不负责下载或启动模型。
@@ -239,3 +239,19 @@ bash run_all_experiments.sh --mode real \
 建议先用 `--plan` 确认实际请求数。`--output-root` 可指定输出父目录。
 底层 `python -m experiments.run` 保留原接口，一键入口使用 `experiments.suite`。
 Windows 对应入口为 `run_all_experiments.ps1 -Mode real -Profile quick -ModelPair llama3_awq`。
+
+### 固定窗口与对应提前草拟的配对扫描
+
+```bash
+bash run_all_experiments.sh --mode real --gamma-lookahead-sweep 2 4 6 --repeats 1
+```
+
+该选项替换常规 A/B/Lookahead 列表，只运行六个固定方案：
+`gamma_2`、`gamma_4`、`gamma_6`（无提前草拟）以及
+`Lookahead_g2`、`Lookahead_g4`、`Lookahead_g6`，对应 h=3、5、7。
+全部严格接受 K=1。h=γ+1 用于给下一轮 γ 个草稿预留一个云端衔接 token；
+不是 γ 与 h 的全组合扫描，不能单独分离二者效应。
+此模式中的 h 由映射决定，`--lookahead` 不覆盖它；最终映射写入 plan.json。
+默认 quick 的四道题、两个网络条件搭配 `--repeats 1` 共 48 次计时请求；
+不指定 repeats 则为 96 次。最终汇报逐 γ 比较提前草拟与同窗口基线。
+PowerShell 对应参数为 `-GammaLookaheadSweep 2,4,6`。

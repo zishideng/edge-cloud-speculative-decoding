@@ -94,6 +94,10 @@ def main(argv=None):
                 if args.mode != 'real' or args.lookahead < 1:
                     raise ValueError('Lookahead requires real mode and positive --lookahead')
                 selected.append(('lookahead','Lookahead','lookahead',False,c['GAMMA_INITIAL'],1))
+            for g in c['GAMMA_SWEEP']:
+                if f'Lookahead_g{g}' in args.methods:
+                    if args.mode != 'real':raise ValueError('Lookahead requires real mode')
+                    selected.append(('lookahead_sweep',f'Lookahead_g{g}','lookahead',False,g,1))
             if 'D' in args.methods:
                 selected.append(('ablation','D','fixed',True,c['GAMMA_INITIAL'],c['FIXED_K']))
             if 'cloud_AR' in args.methods:
@@ -163,7 +167,7 @@ def main(argv=None):
             name=f'{scenario_name}_{repeat}_{method}_{index}'
             print(f'[{job_index}/{len(jobs)}] {name}: starting', flush=True)
             try:
-                record=(live.run_lookahead(ex,index,scenario,gamma,args.lookahead) if strategy=='lookahead' else
+                record=(live.run_lookahead(ex,index,scenario,gamma,gamma+1 if method.startswith('Lookahead_g') else args.lookahead) if strategy=='lookahead' else
                         live.run_cloud_ar(ex,index,scenario) if strategy=='cloud_ar' else
                         live.run(strategy,adaptive,gamma,k,ex,index,scenario) if live else
                         run_simulation(c,strategy,adaptive,gamma,k,index,scenario))
