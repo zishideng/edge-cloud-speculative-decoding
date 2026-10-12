@@ -1,0 +1,52 @@
+% Round timelines (schematic, not to scale).
+\begin{tikzpicture}[font=\scriptsize,x=0.74cm,y=0.36cm]
+\definecolor{freshc}{RGB}{35,139,69}
+\definecolor{lookc}{RGB}{199,233,192}
+\definecolor{verc}{RGB}{49,130,189}
+% \blk{x0}{x1}{y}{label}{fill}{text colour}
+\newcommand{\blk}[6]{%
+  \filldraw[fill=#5,draw=black!70,line width=0.3pt] (#1,#3) rectangle (#2,{#3+0.8});
+  \node[text=#6] at ({(#1+#2)/2},{#3+0.4}) {#4};}
+% \miss{x0}{x1}{y}: discarded lookahead
+\newcommand{\miss}[3]{\draw[red!75!black,line width=0.6pt] (#1,#3) -- (#2,{#3+0.8}) (#1,{#3+0.8}) -- (#2,#3);}
+% \rows{y of edge row}{lane title}
+\newcommand{\rows}[2]{%
+  \node[anchor=east] at (-0.05,{#1+0.4}) {Edge};
+  \node[anchor=east] at (-0.05,{#1-0.6}) {Cloud};
+  \node[anchor=west,font=\scriptsize\itshape] at (-1.2,{#1+1.8}) {#2};
+  \draw[black!35] (0,{#1-1.15}) -- (9.6,{#1-1.15});}
+% (a) synchronous
+\rows{9}{(a) Sync-4: the device idles while the cloud verifies}
+\blk{0}{1.6}{9}{draft 4}{freshc}{white}
+\blk{1.6}{3.6}{8}{net + verify}{verc}{white}
+\blk{3.6}{5.2}{9}{draft 4}{freshc}{white}
+\blk{5.2}{7.2}{8}{net + verify}{verc}{white}
+\blk{7.2}{8.8}{9}{draft 4}{freshc}{white}
+% (b) fixed lookahead
+\rows{5}{(b) Fixed-4: a miss redrafts the whole window}
+\blk{0}{1.6}{5}{draft 4}{freshc}{white}
+\blk{1.6}{3.6}{4}{verify}{verc}{white}
+\blk{1.6}{3.6}{5}{lookahead 5}{lookc}{black}
+\blk{3.6}{5.6}{4}{verify}{verc}{white}
+\blk{3.6}{5.6}{5}{lookahead 5}{lookc}{black}
+\miss{3.6}{5.6}{5}
+\blk{5.6}{7.2}{5}{draft 4}{freshc}{white}
+\blk{7.2}{9.2}{4}{verify}{verc}{white}
+\node[font=\tiny] at (3.6,6.15) {hit};
+\node[font=\tiny] at (5.6,6.15) {miss};
+% (c) CAPE
+\rows{1}{(c) CAPE: short fresh window, lookahead fills the round trip}
+\blk{0}{0.6}{1}{$\gamma_f$}{freshc}{white}
+\blk{0.6}{2.6}{0}{verify}{verc}{white}
+\blk{0.6}{2.6}{1}{lookahead $h$}{lookc}{black}
+\blk{2.6}{4.6}{0}{verify}{verc}{white}
+\blk{2.6}{4.6}{1}{lookahead $h$}{lookc}{black}
+\miss{2.6}{4.6}{1}
+\blk{4.6}{5.2}{1}{$\gamma_f$}{freshc}{white}
+\blk{5.2}{7.2}{0}{verify}{verc}{white}
+\blk{5.2}{7.2}{1}{lookahead $h$}{lookc}{black}
+\blk{7.2}{9.2}{0}{verify}{verc}{white}
+\node[font=\tiny] at (2.6,2.15) {hit};
+\node[font=\tiny] at (4.6,2.15) {miss};
+\draw[-{Latex[length=1.6mm]},black!60] (0,-0.55) -- (9.6,-0.55) node[below left,font=\tiny] {time};
+\end{tikzpicture}

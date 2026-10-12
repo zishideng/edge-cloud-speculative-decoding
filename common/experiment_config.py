@@ -80,7 +80,8 @@ def validate(c):
     return c
 
 
-def load_config(path=None):
+def load_config(path=None, *, validate_values=True):
+    """Load defaults/overrides; suite assembly defers validation until CLI merge."""
     base = json.loads((ROOT / 'configs/experiment.defaults.json').read_text(encoding='utf-8'))
     if path:
         overrides = json.loads(Path(path).read_text(encoding='utf-8'))
@@ -88,6 +89,6 @@ def load_config(path=None):
         if unknown:
             raise ValueError('Unknown configuration keys: ' + ', '.join(sorted(unknown)))
         base.update(overrides)
-    if base['EXPERIMENT_DEFAULTS']:
+    if validate_values and base['EXPERIMENT_DEFAULTS']:
         warnings.warn('使用保守的实验默认值；这些值不是最终推荐参数。', UserWarning)
-    return validate(base)
+    return validate(base) if validate_values else base

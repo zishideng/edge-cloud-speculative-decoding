@@ -1,0 +1,7 @@
+{
+  "EXPERIMENT_DEFAULTS": false,
+  "MODEL_PAIR": "llama3_awq",
+  "TASK": "mtbench",
+  "DATASET": "common/data/mtbench_30.jsonl",
+  "REPEATS": 1
+}

@@ -18,3 +18,4 @@ figs/
 logs/
 *.ready
 nohup.out
+paper/**/build/

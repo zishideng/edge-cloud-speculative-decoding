@@ -1,0 +1,23 @@
+\section{Reproducibility}
+\label{app:repro}
+All numbers, tables and figures in this paper are generated from retained raw records by \path{scripts/extract_evidence.py} and \path{scripts/make_assets.py}; the text reads every value from the generated \path{numbers.tex}. Only the 2\,ms and 100\,ms conditions are used. The raw records, power traces, frozen plans and source snapshots are in the repository:
+\begin{itemize}
+\item Main evaluation: \path{results/compare_20261010/full_110} (plan \path{full_110_plan.json}; host activity during the run is logged in \path{full_110_maintenance.log});
+\item Held-out Set~1: \path{results/pipeline_research_20261009/confirm_markov};
+\item Held-out Set~2: \path{results/pipeline_research_20261009/final_markov_v2}.
+\end{itemize}
+Models and software: draft \path{bartowski/Llama-3.2-1B-Instruct-GGUF} (Q4\_K\_M) on llama.cpp build b9744 with JetPack 6.2.1; target \path{hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4} on vLLM 0.26.0 and PyTorch 2.11.0 (conda environment) with an RTX 3080 (10\,GB), NVIDIA driver 580.173.02, Ubuntu 24.04.4 LTS (kernel 7.0.0-28). Method identifiers in the raw records map to the names used here as follows.
+\begin{center}\footnotesize
+\begin{tabular}{@{}ll@{\qquad}ll@{}}
+\toprule
+Record & Paper & Record & Paper\\
+\midrule
+\texttt{sync\_g4} & Sync-4 & \texttt{markov} & \cape{} ($w=0.25$)\\
+\texttt{fixed\_g2} & Fixed-2 & \texttt{markov\_w0} & \capes{} ($w=0$)\\
+\texttt{fixed\_fast} & Fixed-4 & \texttt{markov\_w05} & \capee{} ($w=0.5$)\\
+\texttt{fixed\_g8} & Fixed-8 & \texttt{markov\_v2} & robust variant\\
+\texttt{adaedl} & AdaEDL & \texttt{regime\_short} & Regime\\
+\bottomrule
+\end{tabular}
+\end{center}
+The controller is in \path{edge/edge_client_pipeline.py} and \path{common/pipeline_model.py}, the AdaEDL baseline in \path{edge/edge_client_adaedl.py}, and the experiment runner in \path{experiments/progress_probe.py}.

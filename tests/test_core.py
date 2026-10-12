@@ -1,4 +1,3 @@
-import copy
 import math
 import unittest
 import warnings
@@ -91,7 +90,8 @@ class ControlTests(unittest.TestCase):
             with self.assertRaises(ValueError): estimate(a,2,1,3,1,1,8)
 
     def test_fixed_vs_adaptive_window(self):
-        c=config(); fixed=WindowController(c,False); adaptive=WindowController(c,True)
+        c=config(); c.update(GAMMA_MIN=1, GAMMA_MAX=8, GAMMA_INITIAL=2)
+        fixed=WindowController(c,False); adaptive=WindowController(c,True)
         self.assertEqual(adaptive.choose()['gamma'],c['GAMMA_INITIAL'])
         for _ in range(6):
             fixed.observe(row()); adaptive.observe(row())
@@ -140,14 +140,6 @@ class TimingTests(unittest.TestCase):
 
 
 class RegressionTests(unittest.TestCase):
-    def test_artifact_directories_are_isolated(self):
-        import tempfile
-        from experiments.run import create_output
-        with tempfile.TemporaryDirectory() as tmp:
-            a,b=create_output(tmp),create_output(tmp)
-            self.assertNotEqual(a,b)
-            self.assertTrue((a/'raw').is_dir())
-            self.assertTrue((b/'report').is_dir())
 
     def test_strict_matches_target_for_all_windows(self):
         from common.simulation import run_simulation

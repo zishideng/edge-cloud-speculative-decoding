@@ -1,0 +1,62 @@
+% CAPE manuscript draft. Compile with XeLaTeX, pdfLaTeX or Tectonic (see README.md).
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{amsmath}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage{newtxtext,newtxmath}
+\else
+  \usepackage{newtxmath}
+  \usepackage[no-math]{fontspec}
+  \setmainfont{texgyretermes}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
+    ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+\fi
+\usepackage{cite}
+\usepackage{graphicx}
+\usepackage{booktabs,multirow}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+% Every number in the text comes from numbers.tex, generated from the raw
+% measurements by scripts/make_assets.py. \E{key} prints one value.
+\input{numbers}
+\makeatletter
+\newcommand{\E}[1]{\ifcsname cape@#1\endcsname\csname cape@#1\endcsname\else
+  \textbf{??}\@latex@warning{Undefined CAPE number #1}\fi}
+\makeatother
+\newcommand{\cape}{CAPE}
+\newcommand{\capes}{CAPE-S}
+\newcommand{\capee}{CAPE-E}
+
+\begin{document}
+
+\title{CAPE: Critical-Path-Aware Prefetching for Fast and Energy-Aware Edge--Cloud Speculative Decoding}
+
+\author{\IEEEauthorblockN{Zishi Deng}
+\IEEEauthorblockA{University of Auckland, Auckland, New Zealand\\ zden973@aucklanduni.ac.nz}}
+
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/related}
+\input{sections/background}
+\input{sections/design}
+\input{sections/implementation}
+\input{sections/evaluation}
+\input{sections/discussion}
+\input{sections/conclusion}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\appendices
+\input{sections/appendix}
+
+\end{document}

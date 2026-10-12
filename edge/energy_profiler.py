@@ -1,102 +1,154 @@
-"""energy_profiler.py — context manager that samples Jetson power via jtop.
+"""Sample Jetson board input power; integrate watts over monotonic time.
 
-Usage:
-    with EnergyProfiler() as ep:
-        # ... run bench ...
-        ...
-    print(ep.summary())   # joules, avg watts, samples, duration
-
-Backed by jetson-stats (jtop). Samples at ~10 Hz in a background thread.
-
-If jtop is unavailable, the profiler degrades to a no-op and reports
-zeros — so the rest of the bench still runs on dev machines.
+Prefer the INA3221 VDD_IN rail (mV * mA / 1e6 -> W), then jtop's
+explicit total. Never sum overlapping rails. Missing measurements are null.
+This is gross board energy, including idle power, not cloud or wall energy.
 """
 from __future__ import annotations
-import threading, time, json
-from typing import Optional, List, Dict
+
+import math
+from pathlib import Path
+import socket
+import threading
+import time
+from urllib.parse import urlsplit
+
+
+def local_draft_url(url):
+    """Only attribute runner power to a draft service on this host."""
+    try:
+        addresses = socket.getaddrinfo(urlsplit(url).hostname, None, type=socket.SOCK_STREAM)
+        for family, kind, protocol, _, address in addresses:
+            try:
+                with socket.socket(family, kind, protocol) as probe:
+                    probe.bind(address)
+                return True
+            except OSError:
+                continue
+    except (OSError, ValueError, TypeError):
+        pass
+    return False
 
 
 class EnergyProfiler:
-    def __init__(self, sample_hz: float = 10.0, label: str = ""):
+    def __init__(self, sample_hz=10.0, label='', disabled_reason=None):
+        if not math.isfinite(sample_hz) or sample_hz <= 0:
+            raise ValueError('sample_hz must be positive and finite')
         self.dt = 1.0 / sample_hz
         self.label = label
-        self.samples: List[Dict] = []
+        self.disabled_reason = disabled_reason
+        self.samples = []
         self._stop = threading.Event()
-        self._thr: Optional[threading.Thread] = None
-        self._t_start = 0.0
-        self._t_end = 0.0
+        self._thr = None
         self._jtop = None
-        self._available = False
+        self._reader = None
+        self._t_start = self._t_end = 0.0
+        self.started_at_unix = None
+        self.source = None
+        self.reason = disabled_reason
+        self.read_errors = 0
+
+    def _select_reader(self):
+        for label in sorted(Path('/sys/bus/i2c/drivers/ina3221').glob('*/hwmon/hwmon*/in*_label')):
+            if label.read_text().strip() != 'VDD_IN':
+                continue
+            channel = label.name[2:-6]
+            voltage = label.with_name(f'in{channel}_input')
+            current = label.with_name(f'curr{channel}_input')
+            def read(voltage=voltage, current=current):
+                return float(voltage.read_text()) * float(current.read_text()) / 1e6
+            read()  # Check access before starting the measured interval.
+            self.source = f'ina3221:{label.parent}:VDD_IN'
+            return read
+        from jtop import jtop
+        self._jtop = jtop(interval=self.dt)
+        self._jtop.start()
+        def read():
+            power = self._jtop.power
+            total = power.get('tot', power.get('Total', {}))
+            value = total.get('power')  # Instantaneous mW; never substitute an average.
+            if value is None:
+                raise ValueError('jtop total board power unavailable')
+            return float(value) / 1000.0
+        read()
+        self.source = 'jtop:total_board_power'
+        return read
+
+    def _sample(self, timestamp=None):
+        try:
+            watts = self._reader()
+            if not math.isfinite(watts) or watts <= 0:
+                raise ValueError('Invalid board input power')
+            self.samples.append(dict(t=time.perf_counter()-self._t_start if timestamp is None else timestamp,
+                                     power_w=watts))
+        except Exception as exc:
+            self.read_errors += 1
+            self.reason = f'Power read failed: {exc}'
 
     def __enter__(self):
-        try:
-            from jtop import jtop
-            self._jtop = jtop()
-            self._jtop.start()
-            self._available = True
-        except Exception as e:
-            print(f"[EnergyProfiler] jtop unavailable ({e}); profiler is a no-op")
+        if self.disabled_reason:
             return self
-        self._t_start = time.perf_counter()
-        self._thr = threading.Thread(target=self._loop, daemon=True)
-        self._thr.start()
+        self.samples = []
+        self._stop.clear()
+        self.read_errors = 0
+        self.reason = None
+        try:
+            self._reader = self._select_reader()
+            self.started_at_unix = time.time()
+            self._t_start = time.perf_counter()
+            self._sample(0.0)
+            self._thr = threading.Thread(target=self._loop, daemon=True)
+            self._thr.start()
+        except Exception as exc:
+            self.reason = f'Board power unavailable: {exc}'
+            self._close()
         return self
 
     def _loop(self):
-        while not self._stop.is_set():
+        while not self._stop.wait(self.dt):
+            self._sample()
+
+    def _close(self):
+        if self._jtop is not None:
             try:
-                p = self._jtop.power     # dict-like in newer jtop
-                # Total board power in mW; try the common keys
-                tot_mw = None
-                if isinstance(p, dict):
-                    tot = p.get("tot") or p.get("Total") or {}
-                    if isinstance(tot, dict):
-                        tot_mw = tot.get("power") or tot.get("avg")
-                if tot_mw is None:
-                    # Alternative: sum rail entries
-                    rails = p.get("rail", p) if isinstance(p, dict) else {}
-                    tot_mw = sum(
-                        (r.get("power", 0) if isinstance(r, dict) else 0)
-                        for r in (rails.values() if isinstance(rails, dict) else [])
-                    )
-                self.samples.append({
-                    "t": time.perf_counter() - self._t_start,
-                    "power_w": (tot_mw or 0) / 1000.0,
-                })
+                self._jtop.close()
             except Exception:
                 pass
-            time.sleep(self.dt)
+            self._jtop = None
 
-    def __exit__(self, *a):
-        if not self._available:
-            return
+    def __exit__(self, *exc):
         self._stop.set()
-        if self._thr:
-            self._thr.join(timeout=2)
-        self._t_end = time.perf_counter()
-        try:
-            self._jtop.close()
-        except Exception:
-            pass
+        if self._thr is not None:
+            self._thr.join()
+            self._sample()
+            self._t_end = time.perf_counter()
+        self._close()
+        return False
 
-    def summary(self) -> Dict:
-        if not self.samples:
-            return {"available": False, "duration_s": 0, "joules": 0,
-                    "avg_watts": 0, "peak_watts": 0, "n_samples": 0}
-        ws = [s["power_w"] for s in self.samples]
-        duration = self.samples[-1]["t"] - self.samples[0]["t"]
-        # Trapezoidal integration for joules
-        joules = 0.0
-        for i in range(1, len(self.samples)):
-            dt = self.samples[i]["t"] - self.samples[i-1]["t"]
-            joules += 0.5 * (self.samples[i]["power_w"] + self.samples[i-1]["power_w"]) * dt
-        return {
-            "available": True,
-            "label": self.label,
-            "duration_s": duration,
-            "joules": joules,
-            "avg_watts": sum(ws) / len(ws),
-            "peak_watts": max(ws),
-            "min_watts": min(ws),
-            "n_samples": len(ws),
-        }
+    def summary(self):
+        result = dict(available=False, label=self.label, scope='jetson_board', source=self.source,
+                      started_at_unix=self.started_at_unix,
+                      reason=self.reason, duration_s=None, joules=None, avg_watts=None,
+                      peak_watts=None, min_watts=None, n_samples=len(self.samples),
+                      read_errors=self.read_errors, sample_hz=1/self.dt)
+        if len(self.samples) < 2 or self.read_errors or self.reason:
+            result['reason'] = self.reason or 'Insufficient power samples'
+            return result
+        duration = self.samples[-1]['t'] - self.samples[0]['t']
+        gaps = [b['t']-a['t'] for a,b in zip(self.samples, self.samples[1:])]
+        if duration <= 0 or max(gaps) > max(1.0, 5*self.dt):
+            result['reason'] = 'Incomplete power sampling coverage'
+            return result
+        joules = sum((a['power_w']+b['power_w'])*0.5*(b['t']-a['t'])
+                     for a,b in zip(self.samples, self.samples[1:]))
+        watts = [s['power_w'] for s in self.samples]
+        result.update(available=True, reason=None, duration_s=duration, joules=joules,
+                      avg_watts=joules/duration, peak_watts=max(watts), min_watts=min(watts))
+        return result
+
+    def record(self, output_tokens):
+        result = self.summary()
+        result['joules_per_token'] = (result['joules']/output_tokens
+                                     if result['available'] and output_tokens > 0 else None)
+        result['samples'] = list(self.samples)
+        return result

@@ -416,3 +416,220 @@ optima. Gamma and h covary; separate effects cannot be inferred. Sequential
 method blocks and service-timing variation may confound between-method and
 historical-run comparisons. Repeat confirmation needed before claiming the
 large gamma6 speedup as stable. Original raw evidence and code snapshots kept.
+# 2026-10-05 — Fixed-gamma adaptive lookahead implementation
+
+User requested implementing the previously discussed h controller and a one-command runner.
+Added `AdaptiveLookahead`: strict K=1, fixed gamma, h chosen from 0/2/3/5
+(bounded by gamma+1), measured draft/verify costs, smoothed whole-prefix-plus-bonus
+alignment, three-round updates and periodic short probes after disabling.
+State resets per request; all probing, foreground waits and terminal drain are timed.
+This is a heuristic; no claim of improved performance is made.
+
+`run_adaptive_lookahead.sh` compares h=0, fixed h and adaptive h using seeded
+within-prompt method order. Optional `--start-draft` starts an owned local service,
+waits for health, refuses occupied ports and terminates only that service on exit.
+Reports include comparisons against BOTH controls, per-round decisions and reuse/wait
+statistics. Existing suite profiles remain available. See
+`docs/RUNBOOK_ADAPTIVE_LOOKAHEAD.md` for commands and limitations.
+
+Validation: 85 unit/integration/regression tests passed; static AST checks,
+shell syntax and diff whitespace checks passed. Real Qwen GPU-draft startup
+failed twice with CUDA allocation errors; the second attempt followed releasing
+reclaimable cache for the same GGUF. Both startup logs are preserved under
+`results/draft_startup/` (`adaptive-mGEmaB.log`, `adaptive-UYcDHX.log`).
+No user application was terminated and no GPU speed result was produced.
+
+An explicitly CPU-draft (`NGL=0`) smoke run completed 3/3 real requests against
+the remote Qwen2.5-3B verifier, using the one-command auto-start runner:
+`results/adaptive_validation_cpu/20261005_142517_550175_7cbf37bc/SUMMARY.md`.
+The adaptive trace includes warmup h=0, h=2 probes, holds and disabling after
+negative predicted gain. Raw records have no pending lookahead events; both
+comparison pairs and CSV decision export were checked. The launcher exited
+successfully and port 8080 was released. The 64-token, one-prompt CPU smoke
+validates functionality only, not speedup, GPU behavior or task quality.
+PowerShell argument forwarding was updated but not executed on Linux.
+
+## 2026-10-08 — Revised manuscript objective
+
+The user changed the paper objective to improving decoding speed while avoiding
+a substantial increase in energy consumption, and requested that this guide
+future paper revisions. The English manuscript now treats energy overhead as a
+constraint rather than requiring an energy reduction. Persistent instructions
+are recorded in `paper/edge_cloud_latency_adaptive_20261008/WRITING_GUIDELINES.md`
+and linked from both READMEs. No acceptable numerical overhead was specified.
+The frozen experiment protocol, raw data and earlier failed joint decision are
+preserved; the revised objective is not presented as a prospectively confirmed
+threshold. No new inference experiment was launched for this writing revision.
+
+## 2026-10-08 — Retire superseded implementations and unreferenced results
+
+The user requested removal of obsolete code and results. The maintained live
+entrypoint is `run_downloaded_benchmarks.sh`, using the local 50/30/30 datasets
+and only `fixed`, `fixed_fast`, and `regime`, once per condition. The earlier
+suite runners, independent benchmark clients, superseded research prototypes,
+their tests/runbooks and unrelated old outputs were removed. Earlier journal
+entries describe historical paths and are not current operating instructions.
+
+The active downloaded-data run, completed paper reproduction, and all cited
+October 7 raw measurements and frozen source snapshots remain. Shared greedy
+drafting, fixed lookahead, target verification and the final latency-regime
+algorithm are unchanged. Archived report regeneration now validates archived
+source hashes; current code is allowed to evolve. Source recovery information
+and the deletion inventory are in `docs/CLEANUP_20261008.json`.
+
+The downloaded GSM8K run was already active during this maintenance; it was
+not stopped or rerun. Maintenance timestamps are recorded separately, because
+gross board energy includes concurrent host activity. Validation uses offline
+fixtures and local fake HTTP services, without real-model inference.
+
+## 2026-10-09 — Progress review findings retained before deletion
+
+`results/progress_review_20261009/` (regime_guard/regime_short probes) is
+deleted at the user's request; the findings that still matter are kept here.
+Pilot (48 requests, 6 prompts): fixed gamma2/h3 vs fixed_fast was +12.30%
+TPS [2.32, 21.41] and +17.47% J/token saving at 2 ms, but -21.67% TPS at
+300 ms. Follow-up (72 requests, 6 prompts, 2 repeats): regime_short vs
+fixed_fast low +4.69% TPS [-2.35, 11.02], J/token saving +9.59% [0.84, 16.32];
+low+high pooled +1.74% [-0.22, 3.89] and +5.23% [1.95, 7.90]. The guard fix
+alone did not improve on regime. Online replay showed that the target
+probability cap changes strict output: tied logprobs (e.g. MT-Bench p2,
+tokens 7384/1933 both -1.0888996) return a different rank1 for cap1 vs cap4,
+so every arm must use the same cap. vLLM 0.26 skips prefix-cache reads for
+prompt-logprob requests, so each verification recomputes the whole context.
+regime_short and regime_guard are dropped; `regime` itself is unchanged.
+
+## 2026-10-09 — Critical-path-aware pipelined lookahead (Markov window controller)
+
+Goal: faster edge-cloud SD without a substantial Jetson energy increase,
+edge-side only (no cloud SSH; verify server unchanged). Campaign directory:
+`results/pipeline_research_20261009/`; full write-up in its `REPORT.md`.
+
+Diagnosis. Cloud verify time is ~14 + 0.30*context ms and nearly independent
+of gamma (85/92/97 ms for gamma 2/4/6). Draft cost is ~15 ms per call plus
+~24 ms/token. Board energy fits J = 4.33 W*wall + 10.0 W*draft-busy (R2
+0.999), so discarded lookahead is expensive. Batched multi-branch drafting
+is not cheap on this board (2/3/4 concurrent slots: 2.0/3.4/4.6x one draft).
+
+Method. Fresh draft tokens sit on the critical path; lookahead tokens overlap
+verification. `common/pipeline_model.py` models a two-state (prefetch
+hit/miss) chain and picks, every round, the fresh window and lookahead
+length minimizing (T*(1+w) + w*2.3*B)/tokens from online per-state
+acceptance, round trip and draft cost (`edge/edge_client_pipeline.py`).
+
+Held-out results vs fixed_fast (prompt-cluster bootstrap 95% CI). Set 1
+(9 prompts, 108 requests): markov w0.25 low+high +4.8% TPS [1.2, 9.3], J/token
+saving +3.7% [-1.5, 7.6]; markov w0.5 +0.0% TPS, +6.8% saving [0.2, 11.2];
+markov vs regime_short +3.8% TPS [1.4, 6.2]. Set 2 (12 new prompts, 108
+requests): markov low+high +6.0% [1.1, 10.7], saving +3.6% [-0.6, 9.0]; all
+three delays +8.0% [2.9, 12.7]. MT-Bench lost 4-5% TPS at 100/300 ms; GSM8K
+at 2 ms was unstable. A robust-estimator variant (markov_v2) was not better
+(+1.0% [-1.9, 4.0] vs markov) and is retired. The budget-only pipeline dev
+phase (+11.2% TPS but -2.5% J/token) is deleted; it motivated the energy term.
+All campaign phases ran on a draft server restarted with --parallel 4
+--kv-unified --ctx-size 8192 (single-stream speed unchanged).
+
+## 2026-10-10 — Small baseline comparison (low/high delays only)
+
+`results/compare_20261010/small_compare/` (plan `small_plan.json`, frozen before
+the run): 7 arms, 6 previously unused prompts (2 per dataset), 1 repeat; 126/126
+requests complete, power valid, no failures. The 300 ms very_high scenario was run,
+but at the user's request it is no longer run or reported: reports show only
+`primary_scenarios` (low 2 ms, high 100 ms) and pooled = low+high.
+Pooled low+high vs fixed_fast (throughput; J/token saving): sync_g4 -21.5%
+[-29.1, -16.4], +10.2% [-2.0, 16.7]; fixed_g2 -16.6%, +3.0%; fixed_g8 -12.9%,
+-32.0%; AdaEDL -20.4% [-24.1, -18.4], -0.9%; markov_w0 +3.8% [-0.7, 13.4], -2.6%
+[-6.9, 6.0]; markov_w05 -1.8% [-5.2, 8.3], +7.0% [-1.7, 11.0]. At 2 ms markov_w05
+saved 12.0% J/token [7.2, 15.2] at +1.5% speed. markov_w0 by dataset: GSM8K +11.1%,
+HumanEval +10.0%, MT-Bench -2.1% (J/token +7.9%). Prefetch matters: fixed_fast is
++27.4% [19.6, 41.1] faster than sync_g4 at 11.3% higher J/token; AdaEDL is only
++1.5% faster than sync_g4 with 12.3% higher J/token (top-20 probabilities and
+streaming cost). All paired outputs identical; no extra truncations. With two
+prompts per dataset, per-dataset intervals are not meaningful.
+
+## 2026-10-10 — Full 110-prompt comparison started; CAPE manuscript draft
+
+Started `results/compare_20261010/full_110` (plan `full_110_plan.json`): all 110
+local prompts, the seven small_compare arms, low/high only, 1,540 requests,
+seed 20261015. `progress_probe` gained `--resume` (same plan bytes; records
+with invalid energy are moved to `failed/` and rerun). At the user's request a
+paper draft was written while the run was active: analysis scripts and LaTeX
+compilation ran under nice 19 and every CPU burst is timestamped in
+`results/compare_20261010/full_110_maintenance.log`, so affected requests can
+be identified or excluded.
+
+Draft: `paper/cape_20261010/` (IEEEtran, 8 pages, package
+`cape_20261010_latex.zip`). It names the markov controller CAPE and uses only
+existing 2/100 ms evidence (held-out sets 1 and 2, small_compare: 228
+requests, 27 prompts). All numbers are generated from raw records into
+`numbers.tex`. Re-fitting the energy model on small_compare gives
+5.73 W*T + 7.24 W*B (R2 0.996, r 1.26), lower than the controller's r = 2.3
+from development runs; the draft discusses this as an energy-weight offset.
+
+## 2026-10-11 — Full 110-prompt comparison (low/high delays)
+
+`results/compare_20261010/full_110/` is complete: 1540/1540 requests, all
+power traces valid. A cloud connection reset stopped the run at 761/1540
+(2026-10-10 20:46:32 NZDT, cloud uptime shows no restart); it was resumed with
+`--resume`, the interrupted request was re-executed, and the traceback is kept
+in status.json. Pooled low+high vs fixed_fast over 110 prompts: markov_w0
++9.9% TPS [8.0, 12.0] with J/token +3.2% (saving -3.2% [-4.8, -1.6]); at 2 ms
++6.2% [3.6, 8.9] and saving +4.9% [2.9, 7.0]; at 100 ms +12.5% [10.2, 14.9]
+with J/token +10.4%. markov_w05 +0.7% [-1.3, 3.1] and saving +6.1% [4.5, 7.7].
+sync_g4 -23.4%, fixed_g2 -18.8%, fixed_g8 -6.5% (J/token +30.9%), adaedl
+-24.3%. markov_w0 is +43.4% vs sync_g4 and +45.1% vs adaedl; markov_w05 is
++32.9% vs adaedl with saving +3.9% [2.6, 5.2]. markov_w0 by dataset: GSM8K
++8.9%, HumanEval +17.8%, MT-Bench +5.7% (all intervals above zero).
+Excluding the 6 blocks that overlap logged maintenance (19 requests), or using
+only the 80 prompts absent from earlier recorded phases, leaves the results
+unchanged (markov_w0 +9.8%; markov_w05 saving 6.0% and 5.8%). Output sequences
+differ in 45 of 220 prompt-delay blocks (pairs vs fixed_fast: markov_w0 19/220,
+fixed_g2 20, fixed_g8 26, sync_g4 1), consistent with near-ties in the
+quantized target that depend on the verification shape; GSM8K accuracy is
+72-74/100 for every arm, and only 83-86 of 220 outputs per arm equal the cloud
+autoregressive reference. The CAPE draft's "rare ties" wording, based on 2/54
+blocks in the small sets, must be revised if these data are used.
+
+## 2026-10-12 — CAPE manuscript revised with the full 110-prompt evaluation
+
+At the user's request the draft (`paper/cape_20261010/`) now uses `full_110` as
+its main evaluation (1,540 requests; the 6-prompt comparison set is dropped)
+and keeps held-out sets 1 and 2 for the default w=0.25. Evidence extraction now
+strips power samples on load (the full set exhausted memory) and uses the
+energy check stored with each record. Re-fitted on full_110 the energy model is
+3.25 W*T + 10.56 W*B (R2 0.990, r 3.2); fits across data sets give r 1.8-3.2,
+so the controller's 2.3 lies within the range. The paper now reports output
+differences honestly (45/220 blocks; window-size dependent; GSM8K accuracy
+unchanged), compares CAPE-S with a per-delay oracle fixed window (Fixed-4 at
+2 ms, Fixed-8 at 100 ms), and states CAPE-S's +3.2% J/token. Two review passes
+corrected four claims against the data (Fixed-4 is fastest only pooled; Fixed-2
+is marginally more frugal than CAPE-E at 2 ms; AdaEDL, not Sync-4, is slowest;
+"never used" prompts restated as outside recorded phases).
+
+## 2026-10-12 — CAPE manuscript: related work moved to Section II, 27 verified references
+
+Related work now follows the introduction and covers speculative decoding
+variants (survey, SpecInfer, Sequoia, BiLD, Medusa, EAGLE, lookahead decoding),
+adaptive draft length, PEARL, on-device and edge-cloud systems (EdgeLLM, SLED,
+SpecEdge, DSD, PicoSpec, WISP, "Speculation at a Distance") and LLM energy
+benchmarks. Every reference was checked online (publisher page, DOI via
+OpenAlex, or arXiv); the llama.cpp GitHub citation and the arXiv-only DISCO
+entry were removed and AWQ now cites its MLSys 2024 version. Server details
+(RTX 3080 10 GB workstation, both endpoints on campus Wi-Fi, dedicated during
+runs) and the author block were added at the user's request.
+
+## 2026-10-12 — Delete early and non-result data; publish current state
+
+At the user's request (scope "keep only the CAPE paper's data, also delete the
+old manuscript") the following were deleted locally: the 6-prompt pilot
+`results/compare_20261010/small_compare` (superseded by full_110), the
+October 8 regime benchmarks `results/downloaded_benchmarks`, the October 7
+regime research and paper evidence `results/adaptive_research_20261007`,
+`results/paper_reproduction`, console and draft-server logs, LaTeX build
+directories, the October 8 manuscript `paper/edge_cloud_latency_adaptive_20261008`
+with its Overleaf zips, and `analysis/adaptive_research_summary.py`, which only
+summarized the deleted October 7 data. Kept: `full_110` (with its plan and
+maintenance log), held-out sets `confirm_markov` and `final_markov_v2`, their
+plans and REPORT.md. The writing guidelines moved to `docs/WRITING_GUIDELINES.md`.
+The CAPE evidence script now lists the pilot prompts explicitly; regenerated
+evidence is identical apart from the controller timing. Earlier entries that
+cite deleted paths are historical.

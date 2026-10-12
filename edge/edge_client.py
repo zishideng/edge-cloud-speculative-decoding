@@ -22,6 +22,10 @@ import requests
 
 from edge.verifier import VerifierBase, VerifyResult
 
+# Native token-ID consumers do not need chat-text parsing. This formatting-only
+# parser accepts incomplete UTF-8 token fragments; it does not constrain logits.
+TOKEN_ONLY_CHAT_PARSER = json.dumps({'parsers': [{'type': 'epsilon'}], 'rules': {}, 'root': 0}, separators=(',', ':'))
+
 
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -190,6 +194,8 @@ class EdgeClient:
             # extra assistant turns after the first complete answer.
             "stop": getattr(self, 'stop_strings', ["<|eot_id|>", "<|end_of_text|>"]),
         }
+        if getattr(self, 'token_only_parser', False):
+            payload['chat_parser'] = TOKEN_ONLY_CHAT_PARSER
         if temperature == 0.0:
             payload.update({
                 "samplers": ["top_k"],
@@ -206,6 +212,10 @@ class EdgeClient:
             self._diagnose_bad_completion(prompt_ids, r)
         r.raise_for_status()
         data = r.json()
+
+        settings = data.get('generation_settings', {})
+        self.last_draft_settings = {k:settings.get(k) for k in
+            ('n_probs','backend_sampling','temperature','top_k','samplers')}
 
         # Field names vary by llama.cpp version. Try several.
         token_ids = (

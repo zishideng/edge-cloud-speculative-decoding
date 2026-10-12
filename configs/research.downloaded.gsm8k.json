@@ -1,0 +1,7 @@
+{
+  "EXPERIMENT_DEFAULTS": false,
+  "MODEL_PAIR": "llama3_awq",
+  "TASK": "gsm8k",
+  "DATASET": "common/data/gsm8k_test_50.jsonl",
+  "REPEATS": 1
+}

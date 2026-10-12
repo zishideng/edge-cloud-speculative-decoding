@@ -1,0 +1,488 @@
+{
+  "date": "2026-10-08",
+  "started_at_utc": "2026-10-08T02:00:45.275512+00:00",
+  "state": "complete",
+  "backup": "/home/jetson/.cache/codex-project-backups/zishi_cleanup_20261008_150045/retired_sources_and_old_manuscript.tar.gz",
+  "backup_sha256": "fea95bd9a631b890587e706af4b072fa76ebcc185b2554cef4dbb6cdb8360a5a",
+  "obsolete_paths": [
+    {
+      "path": "analysis/draft_payload_e2e_report.py",
+      "files": 1,
+      "bytes": 4760,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/draft_payload_report.py",
+      "files": 1,
+      "bytes": 3964,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/energy_report.py",
+      "files": 1,
+      "bytes": 5607,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/fixed_lookahead_report.py",
+      "files": 1,
+      "bytes": 6647,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/make_figures.py",
+      "files": 1,
+      "bytes": 9802,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/make_results_index.py",
+      "files": 1,
+      "bytes": 4778,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/paired.py",
+      "files": 1,
+      "bytes": 2632,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/research_audit.py",
+      "files": 1,
+      "bytes": 10733,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/resource_report.py",
+      "files": 1,
+      "bytes": 4552,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/strict_report.py",
+      "files": 1,
+      "bytes": 5857,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/suite_report.py",
+      "files": 1,
+      "bytes": 12772,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/summarize_c3.py",
+      "files": 1,
+      "bytes": 4220,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "analysis/target_path_report.py",
+      "files": 1,
+      "bytes": 6201,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "cloud/bench_baseline.py",
+      "files": 1,
+      "bytes": 7535,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "cloud/scripts/run_slurm.sh",
+      "files": 1,
+      "bytes": 2400,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "cloud/summarize.py",
+      "files": 1,
+      "bytes": 2170,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "common/fetch_datasets.py",
+      "files": 1,
+      "bytes": 2165,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "common/lookahead_controller.py",
+      "files": 1,
+      "bytes": 3846,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "common/result_storage.py",
+      "files": 1,
+      "bytes": 1103,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "configs/experiment.smoke.json",
+      "files": 1,
+      "bytes": 58,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/CHANGELOG_EXPERIMENT_SYSTEM.md",
+      "files": 1,
+      "bytes": 4673,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/EXPERIMENT_SYSTEM.md",
+      "files": 1,
+      "bytes": 15153,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/RELATED_WORK_AUDIT.md",
+      "files": 1,
+      "bytes": 3048,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/RESEARCH_PROGRESS.md",
+      "files": 1,
+      "bytes": 7746,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/RUNBOOK_ADAPTIVE_LOOKAHEAD.md",
+      "files": 1,
+      "bytes": 8632,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/RUNBOOK_B5.md",
+      "files": 1,
+      "bytes": 2777,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/RUNBOOK_C3.md",
+      "files": 1,
+      "bytes": 2733,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/RUNBOOK_MODELPAIRS.md",
+      "files": 1,
+      "bytes": 10277,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/RUNBOOK_WARMUP.md",
+      "files": 1,
+      "bytes": 3145,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/THESIS_PLAN_20261005.md",
+      "files": 1,
+      "bytes": 20337,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/TOP_K_AUDIT.md",
+      "files": 1,
+      "bytes": 1566,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/VERIFIER_COST_AUDIT.md",
+      "files": 1,
+      "bytes": 2383,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "docs/add_model.md",
+      "files": 1,
+      "bytes": 4148,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/bench_b5.py",
+      "files": 1,
+      "bytes": 6521,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/bench_c1.py",
+      "files": 1,
+      "bytes": 5558,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/bench_c3_energy.py",
+      "files": 1,
+      "bytes": 5696,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/bench_draft.py",
+      "files": 1,
+      "bytes": 5319,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/bench_edge_cloud.py",
+      "files": 1,
+      "bytes": 8844,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/bench_prefetch.py",
+      "files": 1,
+      "bytes": 6367,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/bench_smart.py",
+      "files": 1,
+      "bytes": 175,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/bench_warmup.py",
+      "files": 1,
+      "bytes": 7874,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/edge_client_b5.py",
+      "files": 1,
+      "bytes": 2379,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/edge_client_buffered.py",
+      "files": 1,
+      "bytes": 8941,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/edge_client_c1.py",
+      "files": 1,
+      "bytes": 6923,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/edge_client_joint_lookahead.py",
+      "files": 1,
+      "bytes": 8284,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/edge_client_prefetch.py",
+      "files": 1,
+      "bytes": 5554,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/edge_client_streaming.py",
+      "files": 1,
+      "bytes": 13300,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/edge_client_warmup.py",
+      "files": 1,
+      "bytes": 4927,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/scripts/run_prefetch_all.sh",
+      "files": 1,
+      "bytes": 2336,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/scripts/run_warmup_all.sh",
+      "files": 1,
+      "bytes": 3348,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "edge/scripts/run_week1_finale.sh",
+      "files": 1,
+      "bytes": 1751,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "experiments/adaptive_headroom.py",
+      "files": 1,
+      "bytes": 5301,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "experiments/draft_payload_bench.py",
+      "files": 1,
+      "bytes": 5061,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "experiments/draft_payload_e2e.py",
+      "files": 1,
+      "bytes": 4548,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "experiments/fixed_lookahead.py",
+      "files": 1,
+      "bytes": 5623,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "experiments/run.py",
+      "files": 1,
+      "bytes": 24124,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "experiments/strict_diagnostic.py",
+      "files": 1,
+      "bytes": 8721,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "experiments/suite.py",
+      "files": 1,
+      "bytes": 9031,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "experiments/target_path_audit.py",
+      "files": 1,
+      "bytes": 8088,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "paper/edge_cloud_adaptive_draft",
+      "files": 94,
+      "bytes": 4055253,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "paper/edge_cloud_adaptive_draft_overleaf.zip",
+      "files": 1,
+      "bytes": 782693,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "results/draft_startup",
+      "files": 13,
+      "bytes": 23716035,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "results/energy_validation_cpu",
+      "files": 216,
+      "bytes": 1075870,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "results/suites",
+      "files": 3404,
+      "bytes": 400705008,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "results/thesis_review_20261005",
+      "files": 5,
+      "bytes": 232156,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "run_adaptive_lookahead.sh",
+      "files": 1,
+      "bytes": 3858,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "run_all_experiments.ps1",
+      "files": 1,
+      "bytes": 2595,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "run_all_experiments.sh",
+      "files": 1,
+      "bytes": 236,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "tests/test_adaptive_lookahead.py",
+      "files": 1,
+      "bytes": 9195,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "tests/test_buffered_lookahead.py",
+      "files": 1,
+      "bytes": 12020,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "tests/test_joint_lookahead.py",
+      "files": 1,
+      "bytes": 3889,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "tests/test_streaming_lookahead.py",
+      "files": 1,
+      "bytes": 10460,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    },
+    {
+      "path": "tests/test_suite.py",
+      "files": 1,
+      "bytes": 5297,
+      "reason": "Superseded experiment implementation, legacy result, old manuscript, or corresponding obsolete documentation/test"
+    }
+  ],
+  "planned_files": 3800,
+  "planned_bytes": 430977579,
+  "preserved": [
+    "common/data/",
+    "results/downloaded_benchmarks/",
+    "results/paper_reproduction/",
+    "results/adaptive_research_20261007/",
+    "paper/edge_cloud_latency_adaptive_20261008/"
+  ],
+  "running_experiment_pid": 305283,
+  "active_draft_pid": 206033,
+  "note": "Historical research raw records, negative evidence and frozen source snapshots remain scientific evidence; they are not obsolete results.",
+  "deleted_files": 3800,
+  "deleted_bytes": 430977579,
+  "cache_files": 79,
+  "cache_bytes": 2908795,
+  "finished_at_utc": "2026-10-08T02:10:46.409419+00:00",
+  "validation": {
+    "unit_and_integration_tests": 80,
+    "tests_passed": true,
+    "missing_local_imports": 0,
+    "static_AST_checks": true,
+    "git_diff_whitespace_checks": true,
+    "downloaded_datasets_plan_requests": 990,
+    "current_inference_configurations_and_job_order_unchanged": true,
+    "core_inference_algorithms_unchanged": true,
+    "paper_source_evidence_files_validated": 108,
+    "archived_research_report_regeneration": true,
+    "paper_compilation": "passed",
+    "paper_packages_verified": true,
+    "model_or_dataset_downloaded": false,
+    "real_inference_launched_by_cleanup": false
+  },
+  "active_runs_at_completion": [
+    {
+      "path": "results/downloaded_benchmarks/downloaded_gsm8k_20261008_145238_086270_3dfd8a3a/report/status.json",
+      "state": "running",
+      "completed": 96,
+      "expected": 450
+    }
+  ]
+}

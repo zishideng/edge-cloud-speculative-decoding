@@ -1,0 +1,45 @@
+\begin{figure}[t]
+\centering
+\input{figures/timeline}
+\caption{Round timelines (schematic). Fresh drafting (dark) delays the next verification; lookahead (light) overlaps it and is reused after a hit or discarded after a miss (crossed). \cape{} drafts few fresh tokens and sizes the lookahead to the round trip.}
+\label{fig:timeline}
+\end{figure}
+
+\section{Background and Measurement Study}
+\label{sec:measure}
+
+\subsection{Edge--cloud speculative decoding}
+Let $x$ be the current prefix. In each round the device drafts $\gamma$ tokens $D=(d_1,\dots,d_\gamma)$ with the draft model and sends them to the cloud. The target model scores $x\Vert D$ in one forward pass and returns the number $n$ of leading draft tokens that equal its own greedy predictions, together with one target token $t$. This token is the correction at the first mismatch, or a bonus token if all $\gamma$ draft tokens are accepted. The prefix becomes $x\Vert d_{1:n}\Vert t$, so each round emits $n+1$ tokens. We use strict greedy acceptance: a draft token is accepted only if it equals the target's highest-scoring token, so every emitted token is the target model's greedy choice.
+
+\emph{Lookahead.} While the cloud verifies $D$, the device can draft $h$ further tokens $L=(\ell_1,\dots,\ell_h)$ from $x\Vert D$, assuming full acceptance; $\ell_1$ is the draft model's guess of the bonus token. If $n=\gamma$ and $t=\ell_1$, then $\ell_{2:h}$ is a valid draft for the next round and can be sent at once (a \emph{hit}). Otherwise $L$ is discarded (a \emph{miss}). A fixed window with $h=\gamma+1$ prefetches exactly one complete next block (Fig.~\ref{fig:timeline}(b)).
+
+\subsection{Testbed}
+\label{sec:testbed}
+\emph{Edge device.} The edge device is an NVIDIA Jetson Orin Nano Super developer kit (8\,GB) in its 25\,W power mode, running JetPack 6.2.1 (L4T R36.4.7). It serves Llama-3.2-1B-Instruct~\cite{llama3}, quantized to 4 bits (Q4\_K\_M), with llama.cpp (build b9744) as a single-slot HTTP server with a 4,096-token context and all layers on the GPU. Board input power is sampled at 10\,Hz from the INA3221 VDD\_IN rail and integrated over each request. It includes idle and operating-system power, but not server or network energy.
+
+\emph{Server.} A workstation stands in for the cloud: an AMD Ryzen Threadripper PRO 5965WX CPU (24 cores), 125\,GiB of memory and an NVIDIA GeForce RTX 3080 GPU with 10\,GB of memory, running Ubuntu 24.04 with NVIDIA driver 580.173.02. It serves Llama-3.1-8B-Instruct, quantized to 4 bits with AWQ~\cite{awq2024}, with vLLM 0.26.0~\cite{vllm2023} and PyTorch 2.11.0, with a 4,096-token context. The server ran no other workload during our experiments. A small token-ID verification API in front of vLLM requests top-1 prompt log-probabilities; it is identical for all methods.
+
+\emph{Network.} Both the Jetson and the server are connected to the campus Wi-Fi network, so every verification crosses two wireless links. This real path is fast but irregular: across the \E{verify:rounds} verification rounds of our main evaluation, transport and HTTP overhead per request had a median of \E{net:median}\,ms, a 90th percentile of \E{net:p90}\,ms and a 99th percentile of \E{net:p99}\,ms, and exceeded 100\,ms in \E{net:over100} of rounds. To study slower paths without privileged access, the client adds a fixed delay of 2\,ms or 100\,ms to every verification request, on top of this real path. The measurements in this section are taken from the \E{full:requests:fmt} requests of our main evaluation (Section~\ref{sec:eval}), which covers seven decoding methods.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/measurement.pdf}
+\caption{Measurement study. (a)~Mean round of synchronous speculative decoding with four draft tokens (Sync-4): drafting is \E{sync:high:share}--\E{sync:low:share} of the critical path. (b)~Cloud verification time by the number of draft tokens sent (bars: mean, dots: median; \E{verify:rounds} rounds); with per-request intercepts, each draft token adds \E{verify:draft}\,ms and each context token \E{verify:ctx}\,ms. (c)~Measured request energy against the fit of Eq.~\eqref{eq:energy} (\E{energy:n} requests, seven methods).}
+\label{fig:measure}
+\end{figure*}
+
+\subsection{Observation 1: drafting is on the critical path}
+Fig.~\ref{fig:measure}(a) decomposes the mean round of synchronous speculative decoding with four draft tokens (Sync-4). With 2\,ms of added delay, local drafting takes \E{sync:low:draft}\,ms of a \E{sync:low:total}\,ms round (\E{sync:low:share}). With 100\,ms, it takes \E{sync:high:draft}\,ms of \E{sync:high:total}\,ms (\E{sync:high:share}). Cloud verification takes about \E{sync:low:verify}\,ms in both cases. A round yields only \E{sync:low:tokens} tokens on average, so drafting time directly limits throughput, and any drafting moved into the shadow of verification shortens the round.
+
+\subsection{Observation 2: verification cost is almost flat in the draft length}
+Fig.~\ref{fig:measure}(b) shows the verification time reported by the cloud server against the number of draft tokens sent. A regression with per-request intercepts over \E{verify:rounds} rounds attributes \E{verify:ctx}\,ms to each context token but only \E{verify:draft}\,ms to each draft token, against a mean of \E{verify:mean}\,ms; the mean rises only from \E{verify:one}\,ms with one draft token to \E{verify:eight}\,ms with eight. The verifier must return target log-probabilities at every draft position, and in our deployment vLLM does not reuse cached prefixes for requests that ask for prompt log-probabilities. Every verification therefore recomputes the whole context, and a few more draft positions hardly matter. Sending more draft tokens per round is almost free for the cloud; the cost of a draft token is paid on the device.
+
+\subsection{Observation 3: draft work has a predictable energy price}
+Background draft calls take \E{draft:call}\,ms plus \E{draft:token}\,ms per token ($R^2=\E{draft:rsq}$ over \E{draft:calls} calls). Per-request board energy fits
+\begin{equation}
+E \approx \E{energy:base}\,\mathrm{W}\cdot T + \E{energy:draft}\,\mathrm{W}\cdot B, \label{eq:energy}
+\end{equation}
+where $T$ is the request's wall time and $B$ the draft server's busy time ($R^2=\E{energy:rsq}$, mean absolute percentage error \E{energy:mape}; Fig.~\ref{fig:measure}(c)). A draft token thus costs about \E{draft:joule}\,J above base power, a sizable share of the \E{full:jpt:min}--\E{full:jpt:max}\,J spent per output token. Speculative work that is discarded is visible in the energy bill. An eight-token fixed window discards \E{full:fixed8:pooled:waste} draft tokens per 100 output tokens and uses \E{full:fixed8:fixed4:pooled:abssv} more energy per token than a four-token window (Section~\ref{sec:eval}).
+
+\subsection{Design implications}
+The observations lead to four goals. (i)~Keep fresh drafting off the critical path. (ii)~Fill the verification time with lookahead, but only as much as is likely to be reused, and less when energy matters. (iii)~Adapt to the round trip and the acceptance rate, which vary across and within requests. (iv)~Leave the cloud server and the verification rule unchanged.

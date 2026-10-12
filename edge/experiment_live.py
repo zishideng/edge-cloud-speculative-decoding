@@ -6,6 +6,7 @@ from common.quality import evaluate_quality
 from common.simulation import network_condition
 from edge.edge_client_smart import SmartEdgeClient
 from edge.verifier import RemoteVerifier
+from edge.energy_profiler import EnergyProfiler, local_draft_url
 
 
 class ImpairedVerifier(RemoteVerifier):
@@ -53,16 +54,25 @@ class LiveExperiment:
             raise RuntimeError('Model vocabulary validation could not be confirmed')
         info=self.remote.experiment_info()
         if info['target_model'] != self.model['target']:
-            raise ValueError('Running target does not match MODEL_PAIR target')
+            raise ValueError(f"Running target does not match MODEL_PAIR target: server={info['target_model']!r}, configured={self.model['target']!r}. Set models.yaml target to the exact server model identifier/path after confirming the intended model.")
         self.info=info
         self.references={}
         self.reference_stops={}
+        self.energy_mode = 'auto'
+        self.energy_local = local_draft_url(c['DRAFT_URL'])
+
+    def energy_profiler(self):
+        reason = ('Energy measurement disabled' if self.energy_mode == 'off' else
+                  'Draft service is not on the runner host' if not self.energy_local else None)
+        return EnergyProfiler(disabled_reason=reason)
 
     def run_lookahead(self, example, index, scenario, gamma, lookahead):
         from edge.edge_client_lookahead import FixedLookaheadClient
         original = self.client
         candidate = FixedLookaheadClient(self.c['DRAFT_URL'],self.c,lookahead)
         candidate.stop_strings = self.model.get('stop_strings', [])
+        candidate.token_only_parser = getattr(original, 'token_only_parser', False)
+        candidate.draft_n_probs = original.draft_n_probs
         self.client = candidate
         try:
             record = self.run('strict',False,gamma,1,example,index,scenario)
@@ -95,9 +105,10 @@ class LiveExperiment:
         ref_ids,ref_text=self.reference(example,index)
         remote=ImpairedVerifier(self.c['CLOUD_URL'],self.c,scenario)
         try:
-            text,m=self.client.generate(self.messages(example),remote,gamma=gamma,
-                max_tokens=self.c['MAX_TOKENS'],eos_id=self.model['eos_id'],
-                strategy=strategy,adaptive_window=adaptive_window,fixed_k=k)
+            with self.energy_profiler() as energy:
+                text,m=self.client.generate(self.messages(example),remote,gamma=gamma,
+                    max_tokens=self.c['MAX_TOKENS'],eos_id=self.model['eos_id'],
+                    strategy=strategy,adaptive_window=adaptive_window,fixed_k=k)
         finally:
             remote._session.close()
         quality = evaluate_quality(self.c['TASK'], text, example, m.stop_reason)
@@ -105,52 +116,6 @@ class LiveExperiment:
         return dict(started_at_unix=started_at, finished_at_unix=time.time(), **quality, **{'reference_'+key: value for key, value in reference_quality.items() if key != 'task_quality'},
                     output_ids=m.output_ids,reference_ids=ref_ids,output_text=text,reference_text=ref_text,
                     rounds=m.rounds,wall_time_s=m.wall_time_s,output_tokens=m.total_output_tokens,
+                    energy=energy.record(m.total_output_tokens),
                     ttft_ms=m.ttft_ms,tpot_ms=m.tpot_ms,tokens_per_second=m.tokens_per_second,
                     quality_spent=m.quality_spent, reference_quality=reference_quality['task_quality'],synthetic_token_agreement=None)
-
-    def run_cloud_ar(self, example, index, scenario):
-        """Fresh timed AR call, separate from the cached quality reference.
-
-        This endpoint is non-streaming: TTFT/TPOT are unavailable, not zero.
-        One application network delay is charged for its single generation call.
-        """
-        if scenario.get('queue_ms', 0) or scenario.get('queue_jitter_ms', 0):
-            raise ValueError('cloud_AR queue injection is unsupported by /generate')
-        ref_ids, ref_text = self.reference(example, index)
-        started_at = time.time()
-        start = time.perf_counter()
-        template = self.client.apply_chat_template(self.messages(example))
-        prompt_ids = self.client.tokenize(template, add_special=False)
-        body = dict(prompt_ids=prompt_ids, max_tokens=self.c['MAX_TOKENS'],
-                    temperature=0, eos_id=self.model['eos_id'])
-        wire = json.dumps(body, allow_nan=False).encode()
-        delay, _ = network_condition(scenario, self.c['SEED'], 0, len(wire), 0)
-        time.sleep(delay / 1000)
-        http_start = time.perf_counter()
-        response = self.remote._session.post(self.remote.base+'/generate', data=wire,
-            headers={'Content-Type':'application/json'}, timeout=self.c['REQUEST_TIMEOUT_S'])
-        http_ms = (time.perf_counter()-http_start)*1000
-        response.raise_for_status()
-        down = (len(response.content)*8/(scenario['bandwidth_mbps']*1000)
-                if scenario.get('bandwidth_mbps') else 0)
-        time.sleep(down/1000)
-        data = response.json()
-        ids = data['token_ids']
-        if not ids:
-            raise RuntimeError('Cloud AR returned no tokens')
-        text = self.client.detokenize([t for t in ids if t != self.model['eos_id']])
-        wall = time.perf_counter()-start
-        stop = data.get('stop_reason') or ('eos' if self.model['eos_id'] in ids else
-               'length' if len(ids) >= self.c['MAX_TOKENS'] else 'server_stop')
-        quality = evaluate_quality(self.c['TASK'], text, example, stop)
-        reference_quality = evaluate_quality(self.c['TASK'], ref_text, example, self.reference_stops[index])
-        return dict(started_at_unix=started_at, finished_at_unix=time.time(), **quality,
-            **{'reference_'+key:value for key,value in reference_quality.items() if key!='task_quality'},
-            prompt_ids=prompt_ids, prompt_text=template, output_ids=ids, output_text=text,
-            reference_ids=ref_ids, reference_text=ref_text, rounds=[], wall_time_s=wall,
-            output_tokens=len(ids), tokens_per_second=len(ids)/wall, ttft_ms=None, tpot_ms=None,
-            quality_spent=0.0, reference_quality=reference_quality['task_quality'],
-            synthetic_token_agreement=None,
-            ar_timing={'http_round_trip_ms':http_ms, 'server_generate_ms':data.get('generate_time_ms'),
-                       'injected_network_ms':delay+down, 'request_bytes':len(wire),
-                       'response_bytes':len(response.content), 'ttft_unavailable':'non-streaming endpoint'})

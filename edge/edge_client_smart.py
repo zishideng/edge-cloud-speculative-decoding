@@ -50,6 +50,13 @@ class SmartEdgeClient(EdgeClient):
         while len(m.output_ids) < max_tokens:
             round_start = time.perf_counter()
             g = min(control.window.gamma, max_tokens-len(m.output_ids))
+            # Research clients may select a verified draft window from past
+            # measurements. Ordinary clients retain their existing controller.
+            if hasattr(self, '_choose_gamma'):
+                g = self._choose_gamma(g, max_tokens-len(m.output_ids))
+                if (type(g) is not int or g < 1 or g > c['GAMMA_MAX']
+                        or g > max_tokens-len(m.output_ids)):
+                    raise RuntimeError('Research window controller returned an invalid gamma')
             draft_start = time.perf_counter()
             draft, lps = self.draft(ids, g, 0.0)
             draft_ms = (time.perf_counter()-draft_start)*1000

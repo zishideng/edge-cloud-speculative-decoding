@@ -1,257 +1,74 @@
-# Edge-Cloud Speculative Decoding
+# Edge–Cloud Speculative Decoding
 
-Acceptance-aware edge-cloud speculative decoding: a quantized draft model runs on an
-edge device (Jetson Orin Nano, llama.cpp), a target model (currently AWQ INT4 for `llama3_awq`) verifies in the
-cloud (vLLM).
+当前研究目标：**在不大量增加能耗的前提下提升解码速度**。
+Jetson Orin Nano 上的 Llama-3.2-1B 草稿模型通过校园 Wi-Fi 为 RTX 3080 服务器上的
+Llama-3.1-8B（AWQ）目标模型提供草稿，严格接受 K=1。当前方法为 **CAPE**：
+关键路径感知的预取控制器（两状态 Markov 模型），每轮选择新起草窗口 γ_f 和预取长度 h，
+权重 w 在速度与 Jetson 能耗之间折中（`edge/edge_client_pipeline.py`、`common/pipeline_model.py`）。
 
-Top-k 策略：边缘端贪心解码及本地模拟验证器已显式使用 `top_k=1`；详细范围与检查记录见 [Top-k 策略检查记录](docs/TOP_K_AUDIT.md)。
+## 论文
 
-上述记录保留改造前的检查结论；当前新增的 Top-K 宽松接受与联合控制见 [实验系统说明](docs/EXPERIMENT_SYSTEM.md)。
+[CAPE 论文初稿](paper/cape_20261010/)：[PDF](paper/cape_20261010/main.pdf)、
+[LaTeX 包](paper/cape_20261010/cape_20261010_latex.zip)。文中所有数字由
+`paper/cape_20261010/scripts/` 从原始记录生成。后续修改遵循[论文写作说明](docs/WRITING_GUIDELINES.md)。
 
-The repo is split by **where the code runs**:
+## 主要实验
 
-```
-edge-cloud-speculative-decoding/
-├── common/     两侧都要:模型对配置、数据集
-├── cloud/      只在 GPU 服务器上跑:vLLM verify server + 单机 baseline
-├── edge/       只在 Jetson 上跑:draft 客户端 + benchmark
-├── configs/    models.yaml —— 模型对注册表
-├── analysis/   离线分析,不需要 GPU
-├── docs/       各实验的 RUNBOOK
-└── results/    实验输出
-```
+| 实验 | 目录 | 内容 |
+|---|---|---|
+| 主评测 | `results/compare_20261010/full_110` | 110 题 × 7 方法 × 2 个附加延迟（2/100 ms），1540 个请求 |
+| 留出集 1、2 | `results/pipeline_research_20261009/confirm_markov`、`final_markov_v2` | CAPE 默认设置（w=0.25）与 Fixed-4、Regime 对比 |
 
----
+中文汇总见[研究报告](results/pipeline_research_20261009/REPORT.md)，过程记录见 `research_log.md`。
+原始逐请求记录和功率采样（`*.json`）只保存在本机，不上传 GitHub。
 
-## 目录职责
-
-### `common/` — 两侧都需要
-
-| 文件 | 作用 |
-|---|---|
-| `model_config.py` | 读 `configs/models.yaml`,**校验 draft 与 target 的 vocab 是否一致**(不一致直接中止) |
-| `fetch_datasets.py` | 下载 GSM8K / HumanEval / MT-Bench |
-| `data/*.jsonl` | 已下载好的评测集(3 个任务) |
-
-> 数据集放在 `common/` 而非 `edge/`,因为云端的 `bench_baseline.py` 同样要读。
-
-### `cloud/` — GPU 服务器
-
-| 文件 | 作用 |
-|---|---|
-| `verify_server.py` | FastAPI + vLLM,暴露 `POST /verify` 与 `POST /generate` |
-| `bench_baseline.py` | 云端单机 baseline:纯自回归 / 本地投机解码 / n-gram |
-| `summarize.py` | 汇总云端结果 |
-| `scripts/serve_slurm.sbatch` | SLURM 集群启动 |
-| `scripts/run_slurm.sh` | SLURM 批量跑 baseline |
-| `scripts/setup.sh`, `scripts/env.sh` | 环境准备 |
-| `tools/smoke_test.py` | verify server 自检 |
-| `tools/gpu_power_logger.py` | GPU 功耗采样(nvidia-smi,10 Hz) |
-
-### `edge/` — Jetson
-
-| 文件 | 作用 |
-|---|---|
-| `edge_client.py` | 投机解码主循环(基线实现) |
-| `edge_client_smart.py` | Quality-constrained Top-K and mathematical window control |
-| `edge_client_prefetch.py` | 异步预取(**负面结果**,−25%) |
-| `edge_client_warmup.py` | warmup γ 调度(**弱结果**,+1%) |
-| `edge_client_c1.py` | 熵自适应 γ(**负面结果**,−4%) |
-| `edge_client_b5.py` | SLO 路由 |
-| `verifier.py` | Cloud verification HTTP client and latency measurements |
-| `energy_profiler.py` | Jetson 功耗采样(jtop / INA3221) |
-| `bench_*.py` | 每个实验一个 benchmark 入口 |
-| `scripts/start_draft_server.sh` | 启动 llama.cpp draft server |
-| `scripts/setup_jetson.sh`, `download_model.sh`, `power_mode.sh` | 环境准备 |
-
----
-
-## 运行方式
-
-**所有 Python 入口都从仓库根目录以模块方式运行**,这样 `edge` / `cloud` / `common`
-三个包才能互相导入:
+运行一组对比（计划文件写明方法、题目、延迟、种子，运行前冻结）：
 
 ```bash
-cd <repo-root>
-python -m edge.bench_edge_cloud --help      # ✅
-python -m cloud.verify_server --help        # ✅
-
-cd edge && python bench_edge_cloud.py       # ❌ 会 ImportError
+python3 -u -m experiments.progress_probe --plan results/compare_20261010/full_110_plan.json
+python3 -u -m experiments.progress_probe --plan <plan.json> --resume        # 中断后续跑
+python3 -m experiments.progress_probe --report <campaign>/<phase>          # 只重算报告
 ```
 
-### 1. 云端
+方法：`sync_g4`（无预取）、`fixed_g2`/`fixed_fast`/`fixed_g8`（固定 γ 与 h=γ+1）、
+`adaedl`（AdaEDL 基线）、`markov`/`markov_w0`/`markov_w05`（CAPE，w=0.25/0/0.5）。
+详见[运行手册](docs/RUNBOOK_PROGRESS_PROBES.md)。
+
+## 模型服务
+
+已有服务正常运行时直接复用。默认地址为本地 `127.0.0.1:8080` 和服务器 `172.23.119.64:9090`。
 
 ```bash
-pip install -r cloud/requirements.txt
-export HF_TOKEN=hf_xxxx
+LLAMA_ARG_MMAP=0 HOST=127.0.0.1 PORT=8080 NGL=99 CTX=4096 CACHE_RAM=256 \
+  bash edge/scripts/start_draft_server.sh llama3_awq
 
-# 直接跑(无 SLURM)
-python -m cloud.verify_server \
-    --target hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4 \
-    --host 0.0.0.0 --port 9090 --max-model-len 4096
-
-# 或提交到 SLURM
-MODEL_CONFIG=llama3 sbatch cloud/scripts/serve_slurm.sbatch
-
-# 自检
-python -m cloud.tools.smoke_test --host 172.23.119.64 --port 9090
+# GPU 服务器（conda 环境 vllm）
+python3 -m cloud.verify_server \
+  --target hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4 \
+  --host 0.0.0.0 --port 9090 --max-model-len 4096
 ```
 
-云端单机 baseline(需先停掉 verify server,它占着显存):
+模型注册表为 `configs/models.yaml`。环境依赖见 `edge/requirements.txt`、
+`cloud/requirements.txt` 和 `requirements-experiments.txt`。
+
+## 指标
+
+- 速度为总输出 tokens / 总请求时间，包含后台草稿收尾。
+- 能耗为 Jetson 整板输入功率积分（J/token）；不含服务器和网络能耗。
+- 只报告 2/100 ms 附加延迟及其合并（pooled）；附加延迟叠加在真实 Wi-Fi 链路之上。
+- 成对效应使用按题目聚类的 bootstrap 95% 区间（2000 次）。
+
+## 早期基准（regime 方法）
+
+`run_downloaded_benchmarks.sh` 用 50/30/30 本地题目比较 `fixed`、`fixed_fast`、`regime`
+（[运行手册](docs/RUNBOOK_DOWNLOADED_BENCHMARKS.md)）。其 10 月 7–8 日的结果和旧论文已于
+2026-10-12 删除，摘要保留在 `research_log.md`。
+
+## 离线验证
 
 ```bash
-python -m cloud.bench_baseline --method ar    --data common/data/gsm8k_test_50.jsonl \
-    --out results/B1_AR.json --tag B1_AR
-python -m cloud.bench_baseline --method draft --gamma 3 --data common/data/gsm8k_test_50.jsonl \
-    --out results/B2_SD_g3.json --tag B2_SD_g3
-python -m cloud.bench_baseline --method ngram --gamma 5 --data common/data/gsm8k_test_50.jsonl \
-    --out results/B4_ngram_g5.json --tag B4_ngram_g5
+python3 -m unittest discover -s tests
+python3 -m experiments.static_check
 ```
 
-同时记录 GPU 功耗:
-
-```bash
-python -m cloud.tools.gpu_power_logger --out results/B1_AR_power.csv
-```
-
-### 2. 边缘
-
-```bash
-pip install -r edge/requirements.txt          # requests tqdm pyyaml jetson-stats
-bash edge/scripts/setup_jetson.sh             # 首次:编译 llama.cpp (CUDA, sm_87)
-bash edge/scripts/download_model.sh
-sudo nvpmodel -m 0 && sudo jetson_clocks      # 15W 模式
-
-nohup bash edge/scripts/start_draft_server.sh llama > ~/draft.log 2>&1 &
-curl -s localhost:8080/health
-```
-
-连到云端(同局域网直接用 IP,跨网段才需要 SSH 隧道):
-出现问题修复1.sudo ip route add 172.23.64.0/19 via 172.23.127.254 dev wlp37s0 src 172.23.119.64
-2.sudo ufw allow 9090/tcp
-```bash
-export CLOUD_URL=http://172.23.119.64:9090
-curl -s $CLOUD_URL/health
-```
-
-跑实验:
-
-```bash
-# 边云 SD 基线
-python -m edge.bench_edge_cloud --verifier remote --remote-url $CLOUD_URL \
-    --model-config llama3 --gamma 3 --n 50 \
-    --data common/data/gsm8k_test_50.jsonl --out results/B3_remote_g3.json
-
-# New baseline / joint controller suite
-python -m edge.bench_smart --mode simulate
-# Real services: --mode real --config configs/my-experiment.json
-```
-
-### 3. 分析
-
-不需要 GPU,只读 `results/`:
-
-```bash
-python -m analysis.make_figures results/<timestamp>
-python -m analysis.make_results_index results --out-md results/RESULTS_INDEX.md
-```
-
----
-
-## 加一个新的模型对
-
-```bash
-# 1. 确认 draft 与 target 的 vocab_size 一致(不一致会带来显著开销,见 docs/add_model.md)
-# 2. 在 configs/models.yaml 加一条
-# 3. 云端: MODEL_CONFIG=<name> sbatch cloud/scripts/serve_slurm.sbatch
-#    边缘: bash edge/scripts/start_draft_server.sh <name>
-# 4. 跑: python -m edge.bench_edge_cloud --model-config <name> --verifier remote ...
-```
-
-`common/model_config.py` 会在启动时比对两侧 vocab,**不一致直接中止**。
-完整说明见 `docs/add_model.md`。
-
----
-
-## 硬件
-
-- **Edge**:Jetson Orin Nano 8GB,JetPack 6,llama.cpp b5050 (sm_87)
-- **Cloud**:H200 / RTX 3080,vLLM
-- 模型对见 `configs/models.yaml`
-
-## 一键实验与最终汇报
-
-```bash
-# 查看计划，不调用模型
-bash run_all_experiments.sh --mode real --plan
-# 推荐：精简完整实验，默认 48 次计时请求
-bash run_all_experiments.sh --mode real
-# 连通性和输出检查：3 次请求，输出上限 64 token
-bash run_all_experiments.sh --mode real --profile smoke
-# 保留参数扫描的完整套件
-bash run_all_experiments.sh --mode real --profile full
-```
-
-默认 quick 使用 4 道题、2 次重复、2 个网络条件（额外注入 2/100 ms 延迟），
-比较 A（固定 γ）、B（自适应 γ）、Lookahead（A 加固定提前草拟 h）。
-全部使用严格接受 K=1，只研究窗口 γ 和提前草拟 h；C、D、Proposed 和 K 扫描不参与一键套件。
-底层实现和历史结果保留。
-默认 γ=4、h=5、输出上限 512 token。只比较推测解码方案；质量参照请求不作为云端速度基线。
-full 只额外扫描配置中的 γ，不扫描 K。h 通过 `--lookahead` 指定，目前不会自动扫描。快速检查仍保留必要的代码与协议测试。
-
-脚本自动完成检查、服务校验、实验、统计、图表和最终汇报；失败也会生成标注未完成的汇报，
-并返回非零退出码。服务需要事先部署并保持独占；脚本不负责下载或启动模型。
-
-```text
-results/suites/<运行编号>/
-  SUMMARY.md             中文总结在前，英文在后，优先看这个文件
-  tables/                方法指标、配对吞吐比较
-  figures/               吞吐图 PNG/SVG
-  logs/run.log           执行日志
-  config/                计划、配置、模型注册表、代码快照
-  report/                完成状态与机器可读总结
-  runs/<编号>/raw/        逐请求原始证据及底层实验输出
-```
-
-每次运行创建独立目录，历史研究结果不覆盖。按题目聚类计算配对增益及 bootstrap 区间；
-4 道题只适合探索，不足以证明泛化或质量非劣性。报告列出任务正确率和截断数；
-没有已实现评分器的任务显示 N/A。smoke 和 simulate 不输出真实加速结论。
-提前草拟计时包含后台任务收尾。模拟流程可用 `--mode simulate --profile smoke`，不包含 Lookahead。
-
-### 更换模型对
-
-在 `configs/models.yaml` 或自己的 YAML 注册表添加模型对，然后运行：
-
-```bash
-bash run_all_experiments.sh --mode real \
-  --models-yaml configs/models.yaml --model-pair qwen3 \
-  --draft-url http://EDGE_HOST:8080 --cloud-url http://CLOUD_HOST:9090
-```
-
-注册项必需字段为 `target`、`draft_gguf`、`eos_id`、`vocab_size`；可选 `stop_strings`
-控制文本停止标记，未设置则使用服务自身 EOS 行为。聊天模板由草拟服务提供。
-两端须部署匹配的模型并共享 token ID 语义。脚本检查目标模型标识和词表大小，
-但词表大小一致本身不能证明 tokenizer 一致；词表大小不同的模型对目前会被拒绝。
-每次运行选择一个模型对，其他模型对仍需实际验证。
-
-通过 `--n 8 --repeats 2 --gamma 4 --lookahead 5 --max-tokens 512 --request-offset 0`
-调整规模与参数。配置优先级为 profile 默认值 < `--config` JSON < 显式命令行参数；
-建议先用 `--plan` 确认实际请求数。`--output-root` 可指定输出父目录。
-底层 `python -m experiments.run` 保留原接口，一键入口使用 `experiments.suite`。
-Windows 对应入口为 `run_all_experiments.ps1 -Mode real -Profile quick -ModelPair llama3_awq`。
-
-### 固定窗口与对应提前草拟的配对扫描
-
-```bash
-bash run_all_experiments.sh --mode real --gamma-lookahead-sweep 2 4 6 --repeats 1
-```
-
-该选项替换常规 A/B/Lookahead 列表，只运行六个固定方案：
-`gamma_2`、`gamma_4`、`gamma_6`（无提前草拟）以及
-`Lookahead_g2`、`Lookahead_g4`、`Lookahead_g6`，对应 h=3、5、7。
-全部严格接受 K=1。h=γ+1 用于给下一轮 γ 个草稿预留一个云端衔接 token；
-不是 γ 与 h 的全组合扫描，不能单独分离二者效应。
-此模式中的 h 由映射决定，`--lookahead` 不覆盖它；最终映射写入 plan.json。
-默认 quick 的四道题、两个网络条件搭配 `--repeats 1` 共 48 次计时请求；
-不指定 repeats 则为 96 次。最终汇报逐 γ 比较提前草拟与同窗口基线。
-PowerShell 对应参数为 `-GammaLookaheadSweep 2,4,6`。
+测试使用模拟服务或本地假服务，不执行真实 GPU 实验。
