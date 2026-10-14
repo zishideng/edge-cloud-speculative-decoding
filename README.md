@@ -48,6 +48,26 @@ python3 -m cloud.verify_server \
   --host 0.0.0.0 --port 9090 --max-model-len 4096
 ```
 
+Qwen2.5 模型对 `qwen25_05b_7b_awq`（0.5B-Instruct Q4_K_M 草稿 + 7B-Instruct AWQ 目标）使用相同端口，
+切换模型对前先停掉旧服务：
+
+```bash
+# Jetson：下载并启动草稿
+REPO=Qwen/Qwen2.5-0.5B-Instruct-GGUF MODEL_FILE=qwen2.5-0.5b-instruct-q4_k_m.gguf \
+  MINSIZE=400000000 bash edge/scripts/download_model.sh
+LLAMA_ARG_MMAP=0 HOST=127.0.0.1 PORT=8080 NGL=99 CTX=4096 CACHE_RAM=256 \
+  bash edge/scripts/start_draft_server.sh qwen25_05b_7b_awq
+
+# GPU 服务器（conda 环境 vllm）
+python3 -m cloud.verify_server \
+  --target Qwen/Qwen2.5-7B-Instruct-AWQ \
+  --host 0.0.0.0 --port 9090 --max-model-len 4096
+```
+
+7B 的嵌入层填充到 152064 行，草稿 GGUF 为 151936 行，前 151665 个 token 逐一相同、其余均为填充。
+`models.yaml` 用 `target_vocab_size` 声明这一差异，校验仍要求两端与声明值完全一致。实验通过配置项
+`MODEL_PAIR` 选择模型对（`progress_probe` 读取 `configs/research.downloaded.gsm8k.json`，当前为 `llama3_awq`）。
+
 模型注册表为 `configs/models.yaml`。环境依赖见 `edge/requirements.txt`、
 `cloud/requirements.txt` 和 `requirements-experiments.txt`。
 

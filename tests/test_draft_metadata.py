@@ -1,8 +1,8 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import requests
-from common.model_config import get_draft_vocab
+from common.model_config import get_draft_vocab, validate_pair
 
 
 class DraftMetadataTests(unittest.TestCase):
@@ -35,6 +35,27 @@ class DraftMetadataTests(unittest.TestCase):
     def test_missing_or_invalid_vocab_never_uses_config_value(self):
         for value in (None,0,-1,True,'128256'):
             self.assertIsNone(get_draft_vocab(self.client({'n_vocab':value})))
+
+
+class PairValidationTests(unittest.TestCase):
+    QWEN_7B = {'_name':'qwen25_05b_7b_awq','vocab_size':151936,'target_vocab_size':152064}
+
+    def check(self, cfg, draft, target):
+        client = SimpleNamespace(draft_url='http://edge:8080', props=Mock(return_value={'n_vocab':draft}))
+        with patch('common.model_config.get_target_vocab', return_value=target):
+            return validate_pair(client, None, cfg)
+
+    def test_declared_target_padding_passes(self):
+        self.assertTrue(self.check(self.QWEN_7B, 151936, 152064))
+
+    def test_undeclared_padding_is_mismatch(self):
+        with self.assertRaisesRegex(RuntimeError, 'VOCAB MISMATCH'):
+            self.check({'_name':'x','vocab_size':151936}, 151936, 152064)
+
+    def test_padding_needs_exact_declared_sizes(self):
+        for draft, target in ((151936, 152000), (151665, 152064)):
+            with self.assertRaisesRegex(RuntimeError, 'VOCAB MISMATCH'):
+                self.check(self.QWEN_7B, draft, target)
 
 
 if __name__ == '__main__': unittest.main()

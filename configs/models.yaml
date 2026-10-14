@@ -38,3 +38,18 @@ qwen25_05b_3b:
   stop_strings:
     - "<|im_end|>"
     - "<|endoftext|>"
+
+qwen25_05b_7b_awq:
+  description: "Qwen2.5-7B-Instruct AWQ INT4 target + Qwen2.5-0.5B-Instruct Q4_K_M draft"
+  target: Qwen/Qwen2.5-7B-Instruct-AWQ
+  draft_hf_repo: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+  draft_gguf: qwen2.5-0.5b-instruct-q4_k_m.gguf
+  eos_id: 151645
+  vocab_size: 151936
+  # 7B pads embedding rows to 152064; ids 0..151664 are token-for-token
+  # identical to the draft GGUF and the rest are padding on both sides.
+  target_vocab_size: 152064
+  max_model_len: 4096
+  stop_strings:
+    - "<|im_end|>"
+    - "<|endoftext|>"

@@ -136,22 +136,31 @@ def get_target_vocab(verifier) -> Optional[int]:
 
 def validate_pair(client, verifier, cfg: Dict[str, Any],
                   strict: bool = True) -> bool:
-    """Check draft vocab == target vocab == cfg expected. 
+    """Check draft vocab == target vocab == cfg expected.
+
+    A pair whose target pads its embedding rows past the shared tokenizer
+    (e.g. Qwen2.5-7B: 152064 vs 0.5B: 151936) declares `target_vocab_size`;
+    it passes only when draft == vocab_size and target == target_vocab_size.
 
     strict=True (default): raise RuntimeError on a confirmed mismatch.
     Returns True if validated OK, False if it could not be confirmed
     (e.g. endpoints didn't expose vocab) — in that case we warn but proceed.
     """
     expected = cfg.get("vocab_size")
+    expected_target = cfg.get("target_vocab_size", expected)
     dv = get_draft_vocab(client)
     tv = get_target_vocab(verifier)
+    padded = (expected is not None and expected_target is not None
+              and expected_target > expected
+              and dv == expected and tv == expected_target)
 
     msgs = []
     msgs.append(f"[model_config] pair '{cfg.get('_name','?')}': "
-                f"expected vocab={expected}, draft={dv}, target={tv}")
+                f"expected vocab draft={expected} target={expected_target}, "
+                f"got draft={dv}, target={tv}")
 
     # Confirmed mismatch between draft and target → fatal
-    if dv is not None and tv is not None and dv != tv:
+    if dv is not None and tv is not None and dv != tv and not padded:
         err = (f"VOCAB MISMATCH: draft={dv} target={tv}. "
                f"Speculative decoding requires identical tokenizers. "
                f"Aborting to avoid producing garbage.")
@@ -162,10 +171,10 @@ def validate_pair(client, verifier, cfg: Dict[str, Any],
         return False
 
     # Mismatch against the declared expected value → warn (config drift)
-    for label, v in (("draft", dv), ("target", tv)):
-        if v is not None and expected is not None and v != expected:
+    for label, v, declared in (("draft", dv, expected), ("target", tv, expected_target)):
+        if v is not None and declared is not None and v != declared:
             msgs.append(f"[model_config] WARNING: {label} vocab {v} != "
-                        f"declared {expected} in models.yaml (update the config?)")
+                        f"declared {declared} in models.yaml (update the config?)")
 
     # Couldn't read either side → can't confirm; warn but proceed
     if dv is None or tv is None:
@@ -176,6 +185,7 @@ def validate_pair(client, verifier, cfg: Dict[str, Any],
         print("\n".join(msgs))
         return False
 
-    msgs.append("[model_config] vocab OK (draft == target).")
+    msgs.append("[model_config] vocab OK (target embedding padded to declared size)."
+                if padded else "[model_config] vocab OK (draft == target).")
     print("\n".join(msgs))
     return True
