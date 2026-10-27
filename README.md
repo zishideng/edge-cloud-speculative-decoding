@@ -16,16 +16,19 @@ Llama-3.1-8B（AWQ）目标模型提供草稿，严格接受 K=1。当前方法�
 
 | 实验 | 目录 | 内容 |
 |---|---|---|
-| 主评测 | `results/compare_20261010/full_110` | 110 题 × 7 方法 × 2 个附加延迟（2/100 ms），1540 个请求 |
-| 留出集 1、2 | `results/pipeline_research_20261009/confirm_markov`、`final_markov_v2` | CAPE 默认设置（w=0.25）与 Fixed-4、Regime 对比 |
+| Llama / Qwen / Gemma-2：CAPE 与固定窗口 | `results/final_20261020/{llama,qwen,gemma}_full_dist_110` | 110 题 × 低/高/动态延迟 |
+| Llama / Qwen / Gemma-2：流水线基线 | `results/baselines_20261022/{llama,qwen,gemma}_new_110` | PEARL、PicoSpec、PipeSD、HF，与上一行按题目合并 |
+| Llama：能耗权重扫描 | `results/baselines_20261022/llama_energy_110` | w=0.25/1/2 |
+| Gemma-3：全部方法 | `results/gemma3_20261026/gemma3_full_110` | 110 题 × 3 种延迟 × 10 种方法 |
+| Gemma-3：时延扫描、消融 | `results/gemma3_20261026/gemma3_delay_sweep`、`gemma3_ablation` | 30 题 |
 
-中文汇总见[研究报告](results/pipeline_research_20261009/REPORT.md)，过程记录见 `research_log.md`。
+每个目录的 `analysis/SUMMARY.md` 是汇总，过程记录见 `research_log.md`。
 原始逐请求记录和功率采样（`*.json`）只保存在本机，不上传 GitHub。
 
 运行一组对比（计划文件写明方法、题目、延迟、种子，运行前冻结）：
 
 ```bash
-python3 -u -m experiments.progress_probe --plan results/compare_20261010/full_110_plan.json
+python3 -u -m experiments.progress_probe --plan results/gemma3_20261026/gemma3_full_110_plan.json
 python3 -u -m experiments.progress_probe --plan <plan.json> --resume        # 中断后续跑
 python3 -m experiments.progress_probe --report <campaign>/<phase>          # 只重算报告
 ```

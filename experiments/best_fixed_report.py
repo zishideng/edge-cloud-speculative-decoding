@@ -19,9 +19,9 @@ from experiments.progress_probe import paired_effect, summarize
 
 ROOT = Path(__file__).resolve().parents[1]
 PAIRS = {
-    'llama': ('Llama-3.2-1B -> Llama-3.1-8B-AWQ', 'results/compare_20261010/full_110'),
-    'qwen': ('Qwen2.5-0.5B -> Qwen2.5-7B-AWQ', 'results/qwen_20261014/full_110'),
-    'gemma': ('Gemma-2-2B -> Gemma-2-9B-AWQ', 'results/gemma_20261015/full_110'),
+    'llama': ('Llama-3.2-1B -> Llama-3.1-8B-AWQ', 'results/final_20261020/llama_full_dist_110'),
+    'qwen': ('Qwen2.5-0.5B -> Qwen2.5-7B-AWQ', 'results/final_20261020/qwen_full_dist_110'),
+    'gemma': ('Gemma-2-2B -> Gemma-2-9B-AWQ', 'results/final_20261020/gemma_full_dist_110'),
 }
 FIXED = ('fixed_g2', 'fixed_fast', 'fixed_g8')
 ROWS = ('sync_g4', 'fixed_g2', 'fixed_fast', 'fixed_g8', 'best_fixed', 'adaedl', 'markov_w0', 'markov_w0_pos',
