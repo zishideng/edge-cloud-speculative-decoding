@@ -28,6 +28,8 @@ declare -A GGUF=(
   [qwen25]="qwen2.5-0.5b-instruct-q4_k_m.gguf"
   [qwen25_05b_3b]="qwen2.5-0.5b-instruct-q4_k_m.gguf"
   [qwen25_05b_7b_awq]="qwen2.5-0.5b-instruct-q4_k_m.gguf"
+  [gemma2_2b_9b_awq]="gemma-2-2b-it-Q4_K_M.gguf"
+  [gemma3_270m_4b]="gemma-3-270m-it-Q8_0.gguf"
   [deepseek]="DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
 )
 

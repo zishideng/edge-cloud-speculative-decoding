@@ -13,11 +13,17 @@ class ImpairedVerifier(RemoteVerifier):
     def __init__(self,url,c,scenario):
         super().__init__(url,c['REQUEST_TIMEOUT_S'])
         self.c,self.scenario,self.round=c,scenario,0
+        self.t0=time.perf_counter()   # time-varying delay schedules start with the request
 
     def verify(self,*args,**kwargs):
         size=len(json.dumps({'args':args,'kwargs':kwargs}).encode())
         # Download bandwidth delay is computed AFTER receiving the actual response.
-        delay,queue=network_condition(self.scenario,self.c['SEED'],self.round,size,0)
+        scenario=self.scenario
+        if scenario.get('segments'):
+            now=(time.perf_counter()-self.t0)*1000
+            level=next((d for end,d in scenario['segments'] if now<end),scenario['segments'][-1][1])
+            scenario=dict(scenario,rtt_ms=level)
+        delay,queue=network_condition(scenario,self.c['SEED'],self.round,size,0)
         self.experiment_queue_ms=queue
         time.sleep(delay/1000)
         result=super().verify(*args,**kwargs)
@@ -48,6 +54,7 @@ class LiveExperiment:
         self.remote=RemoteVerifier(c['CLOUD_URL'],c['REQUEST_TIMEOUT_S'])
         self.model=load_model_config(c['MODEL_PAIR'])
         self.client.stop_strings = self.model.get('stop_strings', [])
+        self.client.prepend_bos_id = self.model.get('prepend_bos_id')
         get_draft_vocab(self.client, required=True)
         self.remote.health()
         if not validate_pair(self.client,self.remote,self.model):
@@ -71,6 +78,7 @@ class LiveExperiment:
         original = self.client
         candidate = FixedLookaheadClient(self.c['DRAFT_URL'],self.c,lookahead)
         candidate.stop_strings = self.model.get('stop_strings', [])
+        candidate.prepend_bos_id = self.model.get('prepend_bos_id')
         candidate.token_only_parser = getattr(original, 'token_only_parser', False)
         candidate.draft_n_probs = original.draft_n_probs
         self.client = candidate
@@ -90,6 +98,9 @@ class LiveExperiment:
     def reference(self,example,index):
         if index not in self.references:
             ids=self.client.tokenize(self.client.apply_chat_template(self.messages(example)),add_special=False)
+            bos=self.model.get('prepend_bos_id')
+            if bos is not None and ids[:1]!=[bos]:
+                ids=[bos]+ids
             response=self.remote._session.post(self.remote.base+'/generate',json={
                 'prompt_ids':ids,'max_tokens':self.c['MAX_TOKENS'],'temperature':0,
                 'eos_id':self.model['eos_id']},timeout=self.c['REQUEST_TIMEOUT_S'])

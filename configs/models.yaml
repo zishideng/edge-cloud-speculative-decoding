@@ -53,3 +53,35 @@ qwen25_05b_7b_awq:
   stop_strings:
     - "<|im_end|>"
     - "<|endoftext|>"
+
+gemma2_2b_9b_awq:
+  description: "Gemma-2-9B-it AWQ INT4 target + Gemma-2-2B-it Q4_K_M draft"
+  target: hugging-quants/gemma-2-9b-it-AWQ-INT4
+  draft_hf_repo: bartowski/gemma-2-2b-it-GGUF
+  draft_gguf: gemma-2-2b-it-Q4_K_M.gguf
+  # Instruction turns end with <end_of_turn> (107); <eos> is 1.
+  eos_id: 107
+  # llama.cpp renders the Gemma template without <bos>; Gemma needs it, so it is prepended (id 2).
+  prepend_bos_id: 2
+  vocab_size: 256000
+  # The server is limited to 2048 tokens (10 GB GPU); prompt + 512 output fits.
+  max_model_len: 2048
+  stop_strings:
+    - "<end_of_turn>"
+
+
+gemma3_270m_4b:
+  description: "Gemma-3-4B-it (vLLM online FP8) target + Gemma-3-270M-it Q8_0 draft"
+  target: google/gemma-3-4b-it
+  draft_hf_repo: ggml-org/gemma-3-270m-it-GGUF
+  draft_gguf: gemma-3-270m-it-Q8_0.gguf
+  # Gemma-3 turns end with <end_of_turn> (106); <eos> is 1.
+  eos_id: 106
+  # Same template quirk as Gemma-2: llama.cpp omits <bos> (id 2).
+  prepend_bos_id: 2
+  vocab_size: 262144
+  # 4B pads embedding rows to 262208; the extra ids are image/padding tokens.
+  target_vocab_size: 262208
+  max_model_len: 2048
+  stop_strings:
+    - "<end_of_turn>"

@@ -44,6 +44,9 @@ class SmartEdgeClient(EdgeClient):
                     message['content'] += ' /no_think'
                     break
         ids = self.tokenize(self.apply_chat_template(messages), add_special=False)
+        bos = getattr(self, 'prepend_bos_id', None)   # set for pairs whose template omits BOS (Gemma)
+        if bos is not None and ids[:1] != [bos]:
+            ids = [bos] + ids
         if not ids:
             raise ValueError('Prompt tokenization returned no tokens')
         m = ExperimentMetrics()

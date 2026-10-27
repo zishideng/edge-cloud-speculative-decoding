@@ -1,0 +1,17 @@
+\begin{tabular}{@{}lrrrrrrrr@{}}
+\toprule
+ & \multicolumn{2}{c}{Llama} & \multicolumn{2}{c}{Qwen} & \multicolumn{2}{c}{Gemma-2} & \multicolumn{2}{c}{Gemma-3}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+Method & 2\,ms & 100\,ms & 2\,ms & 100\,ms & 2\,ms & 100\,ms & 2\,ms & 100\,ms\\
+\midrule
+Best fixed window & Fixed-2 & Fixed-4 & Fixed-2 & Fixed-8 & Fixed-2 & Fixed-2 & Fixed-2 & Fixed-8 \\
+\midrule
+Sync-4 & $-11.8$ & $-29.9$ & $-29.4$ & $-34.3$ & $-7.3$ & $-26.2$ & $-32.2$ & $-24.8$ \\
+HF assisted & $-17.9$ & $-26.3$ & $-39.0$ & $-36.5$ & $-16.6$ & $-17.7$ & $-40.4$ & $-28.0$ \\
+PipeSD & $-7.0$ & $-14.4$ & $-14.5$ & $-9.2$ & $-9.0$ & $-12.2$ & $-37.4$ & $-18.4$ \\
+PicoSpec & $-9.1$ & $-0.8$ & $-6.4$ & $-12.6$ & $-9.1$ & $-4.5$ & $+6.7$ & $-7.2$ \\
+PEARL & $+3.3$ & $+0.2$ & $-18.6$ & $-12.6$ & $+9.8$ & $+5.1$ & $-4.2$ & $-3.4$ \\
+\textbf{\capes{}} & $-1.8$ & $+3.3$ & $-3.1$ & $+2.1$ & $+5.9$ & $+1.9$ & $+0.4$ & $+7.4$ \\
+\textbf{\capee{}} & $-0.3$ & $-4.8$ & $-3.5$ & $-8.7$ & $+6.3$ & $+0.8$ & $-5.4$ & $-6.2$ \\
+\bottomrule
+\end{tabular}

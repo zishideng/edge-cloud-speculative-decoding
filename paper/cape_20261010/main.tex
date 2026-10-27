@@ -26,6 +26,8 @@
 % Every number in the text comes from numbers.tex, generated from the raw
 % measurements by scripts/make_assets.py. \E{key} prints one value.
 \input{numbers}
+% PROVISIONAL cross-pair values (unpaired aggregates); removed once the paired extraction runs.
+\input{numbers_draft}
 \makeatletter
 \newcommand{\E}[1]{\ifcsname cape@#1\endcsname\csname cape@#1\endcsname\else
   \textbf{??}\@latex@warning{Undefined CAPE number #1}\fi}
@@ -33,6 +35,8 @@
 \newcommand{\cape}{CAPE}
 \newcommand{\capes}{CAPE-S}
 \newcommand{\capee}{CAPE-E}
+% Placeholder for results of experiments that are still running.
+\newcommand{\PENDING}[1]{\fbox{\parbox{0.95\linewidth}{\color{red}\small\textbf{PENDING:} #1}}}
 
 \begin{document}
 

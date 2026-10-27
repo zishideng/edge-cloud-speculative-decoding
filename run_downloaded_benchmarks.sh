@@ -61,7 +61,7 @@ PY
     --low-ms 2 --high-ms 100 \
     --max-tokens 512 --buffer-max 10 \
     --draft-url "${DRAFT_URL:-http://127.0.0.1:8080}" \
-    --cloud-url "${CLOUD_URL:-http://172.23.119.64:9090}" \
+    --cloud-url "${CLOUD_URL:-http://172.23.123.195:9090}" \
     --output-root "${DOWNLOADED_RESULTS_ROOT:-results/downloaded_benchmarks}" \
     "${plan_flags[@]}"
 done

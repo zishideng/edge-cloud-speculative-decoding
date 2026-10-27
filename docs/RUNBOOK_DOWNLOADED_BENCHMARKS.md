@@ -15,7 +15,7 @@ cd /home/jetson/zishi_edge-cloud-speculative-decoding
 bash run_downloaded_benchmarks.sh
 ```
 
-Both Llama model services must already be running. The default draft endpoint is `http://127.0.0.1:8080`; the cloud endpoint is `http://172.23.119.64:9090`. Override `DRAFT_URL` and `CLOUD_URL` as environment variables if necessary. `PYTHON` can select an interpreter; otherwise the script uses `.venv/bin/python` when available, then `python3`.
+Both Llama model services must already be running. The default draft endpoint is `http://127.0.0.1:8080`; the cloud endpoint is `http://172.23.123.195:9090`. Override `DRAFT_URL` and `CLOUD_URL` as environment variables if necessary. `PYTHON` can select an interpreter; otherwise the script uses `.venv/bin/python` when available, then `python3`.
 
 Inspect the resolved protocols without contacting models:
 

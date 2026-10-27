@@ -36,7 +36,7 @@ python3 -m experiments.progress_probe --report <campaign>/<phase>          # 只
 
 ## 模型服务
 
-已有服务正常运行时直接复用。默认地址为本地 `127.0.0.1:8080` 和服务器 `172.23.119.64:9090`。
+已有服务正常运行时直接复用。默认地址为本地 `127.0.0.1:8080` 和服务器 `172.23.123.195:9090`。
 
 ```bash
 LLAMA_ARG_MMAP=0 HOST=127.0.0.1 PORT=8080 NGL=99 CTX=4096 CACHE_RAM=256 \

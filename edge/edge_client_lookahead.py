@@ -26,7 +26,9 @@ class _OverlappedVerifier:
     def verify(self, prompt_ids, draft_ids, *args, **kwargs):
         self.client._launch(prompt_ids, draft_ids, kwargs.get('eos_id'))
         started = time.perf_counter()
-        result = self.remote.verify(prompt_ids, draft_ids, *args, **kwargs)
+        remote_verify = getattr(self.client, '_remote_verify', None)
+        result = (remote_verify(self.remote, prompt_ids, draft_ids, *args, **kwargs) if remote_verify
+                  else self.remote.verify(prompt_ids, draft_ids, *args, **kwargs))
         self.client._verified((time.perf_counter()-started)*1000)
         if hasattr(self.client, '_verification_result'):
             self.client._verification_result(result)
