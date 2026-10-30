@@ -1,0 +1,11 @@
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+ & \multicolumn{3}{c}{Throughput (tok/s)} & \multicolumn{3}{c}{J/token}\\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+Variant & 2\,ms & 100\,ms & dyn. & 2\,ms & 100\,ms & dyn.\\
+\midrule
+PicoSpec-4 & 29.3 & 14.0 & 19.6 & 0.332 & 0.476 & 0.387\\
++ adaptive lookahead & 28.9 & 15.9 & 20.9 & 0.341 & 0.495 & 0.402\\
++ adaptive fresh (\capes{}) & 28.4 & 15.9 & 21.1 & 0.285 & 0.489 & 0.371\\
+\bottomrule
+\end{tabular}

@@ -2,46 +2,50 @@
 \label{sec:design}
 
 \subsection{Overview}
-At the start of each round, \cape{} chooses a fresh window $\gamma_f$ and a lookahead length $h$ (Algorithm~\ref{alg:cape}). If the previous lookahead is reusable, \cape{} sends all $h-1$ reusable tokens at once and drafts fresh tokens only if fewer than $\gamma_f$ remain, so no drafting delays the request. Otherwise it drafts $\gamma_f$ fresh tokens on the critical path, usually only one or two. As soon as the request is sent, \cape{} drafts $h$ lookahead tokens in the background while the cloud verifies. Short fresh windows keep rounds short after misses, and long lookahead converts verification time into ready-to-send drafts after hits (Fig.~\ref{fig:timeline}(c)).
+At the start of each round, \cape{} chooses a fresh window $\gamma_f$ and a lookahead length $h$ (Algorithm~\ref{alg:cape}). If the previous lookahead is reusable, \cape{} sends all $h-1$ reusable tokens at once and drafts fresh tokens only if fewer than $\gamma_f$ remain, so no drafting delays the request. Otherwise it drafts $\gamma_f$ fresh tokens on the critical path, usually only one or two. As soon as the request is sent, \cape{} drafts $h$ lookahead tokens in the background while the cloud verifies, and interrupts them if the verdict rejects a sent token. Short fresh windows keep rounds short after misses, and long lookahead converts verification time into ready-to-send drafts after hits (Fig.~\ref{fig:timeline}(c)).
 
 \subsection{Two-state pipeline model}
-Let $c$ and $d$ be the per-call and per-token draft costs, $V$ the verification round trip from sending a draft to receiving the verdict, and $\alpha_M$ and $\alpha_H$ the per-token acceptance probabilities in miss and hit rounds. For a candidate $(\gamma_f,h)$, background drafting takes $b=c+dh$. A round ends only when both verification and lookahead have finished, which takes $o=\mathbb{E}_V[\max(V,b)]$ after the request is sent. Taking the expectation over the round-trip distribution, rather than $\max(\mathbb{E}V,b)$, matters on a jittery path: a lookahead that fits inside the mean round trip still delays every round whose round trip is shorter, so pricing these rounds keeps \cape{} from buying lookahead that the network does not hide.
+Let $c$ and $d$ be the per-call and per-token draft costs, $V$ the verification round trip from sending a draft to receiving the verdict, and $\alpha_M$ and $\alpha_H$ the per-token acceptance probabilities in miss and hit rounds. For a candidate $(\gamma_f,h)$, background drafting takes $b=c+dh$. It runs to completion only if the verdict accepts every sent token; otherwise the verdict interrupts it. If all sent tokens are accepted with probability $q$, the round therefore waits
+\begin{equation}
+o(q)=q\,\mathbb{E}[\max(V,b)]+(1-q)\,\mathbb{E}[V]\label{eq:wait}
+\end{equation}
+after sending, and the draft server is busy for $\beta(q)=q\,b+(1-q)\,\mathbb{E}[\min(V,b)]$ of that time. The expectations are taken over the round-trip distribution rather than at its mean: a lookahead that fits inside the mean round trip still delays every round whose round trip is shorter, and $\mathbb{E}[\max(V,b)]\ge\max(\mathbb{E}V,b)$ charges it for those rounds.
 
-\emph{Miss rounds} draft $\gamma_f$ tokens first:
+\emph{Miss rounds} draft $\gamma_f$ tokens first, all of which are accepted with probability $q_M=\alpha_M^{\,\gamma_f}$:
 \begin{align}
-T_M &= c+d\gamma_f+o, & B_M &= c+d\gamma_f+b,\nonumber\\
+T_M &= c+d\gamma_f+o(q_M), & B_M &= c+d\gamma_f+\beta(q_M),\nonumber\\
 N_M &= \textstyle\sum_{i=0}^{\gamma_f}\alpha_M^{\,i}, & p_{MH} &= \alpha_M^{\,\gamma_f+1}.\label{eq:miss}
 \end{align}
 Here $N_M$ is the expected number of emitted tokens (accepted tokens plus the target token) under geometric acceptance, and $p_{MH}$ is the probability that all $\gamma_f$ tokens and the bonus guess are accepted, which makes the next round a hit.
 
-\emph{Hit rounds} send $s=\max(h-1,\gamma_f)$ tokens, of which $u=s-(h-1)$ must be drafted as a top-up:
+\emph{Hit rounds} send $k=\max(h-1,\gamma_f)$ tokens, of which $u=k-(h-1)$ must be drafted as a top-up, and all are accepted with probability $q_H=\alpha_H^{\,k}$:
 \begin{align}
-T_H &= [u>0](c+du)+o, & B_H &= [u>0](c+du)+b,\nonumber\\
-N_H &= \textstyle\sum_{i=0}^{s}\alpha_H^{\,i}, & p_{HH} &= \alpha_H^{\,s+1}.\label{eq:hit}
+T_H &= [u>0](c+du)+o(q_H), & B_H &= [u>0](c+du)+\beta(q_H),\nonumber\\
+N_H &= \textstyle\sum_{i=0}^{k}\alpha_H^{\,i}, & p_{HH} &= \alpha_H^{\,k+1}.\label{eq:hit}
 \end{align}
 The stationary hit share of the chain is $\pi_H=p_{MH}/(p_{MH}+1-p_{HH})$. We write $\bar X=(1-\pi_H)X_M+\pi_H X_H$ for $X\in\{T,B,N\}$.
 
-\emph{Objective.} By Eq.~\eqref{eq:energy}, board energy is proportional to $T+rB$, where $r$ is the ratio of draft-active to base power. \cape{} minimizes
+\emph{Objective.} By Eq.~\eqref{eq:energy}, board energy is proportional to $T+rB$, where $r$ is the ratio of draft-active to base power. \cape{} minimizes the cost per token
 \begin{equation}
-J(\gamma_f,h)=\frac{\bar T+w\,(\bar T+r\bar B)}{\bar N},\label{eq:objective}
+C(\gamma_f,h)=\frac{\bar T+w\,(\bar T+r\bar B)}{\bar N},\label{eq:objective}
 \end{equation}
 which is the time per token plus $w$ times the energy per token, expressed in seconds of base power. With $w=0$, \cape{} optimizes speed only. Larger $w$ makes speculative work more expensive and shortens the lookahead when acceptance is low.
 
-The model captures the trade-offs of Section~\ref{sec:measure}. A larger $\gamma_f$ yields more tokens per miss round but lengthens the critical path. A larger $h$ costs no time while $b\le V$ and makes a hit more valuable, but it raises $B$ in every round, hit or miss. Separate acceptance rates for the two states capture the correlation of acceptance across rounds: hits happen in predictable stretches of text, where the next block is also more likely to be accepted.
+The model captures the trade-offs of Section~\ref{sec:measure}. A larger $\gamma_f$ yields more tokens per miss round but lengthens the critical path. A larger $h$ costs no time while $b\le V$ and makes a hit more valuable, but it raises $B$ in every round, hit or miss. Interruption shifts this balance: when a rejection is likely, a long lookahead is cut short at the verdict and costs little time, yet it still costs energy until the cut, which the energy weight prices. Separate acceptance rates for the two states capture the correlation of acceptance across rounds: hits happen in predictable stretches of text, where the next block is also more likely to be accepted.
 
 \subsection{Online estimation}
 \cape{} re-estimates its inputs before every round and resets them for every request. $\hat\alpha_H$ is estimated from rounds that follow a fully accepted round, the precondition of a hit, and $\hat\alpha_M$ from all other rounds. Each estimate uses the last 32 such rounds and a prior of 8 accepted tokens out of 10 examined:
 \begin{equation}
 \hat\alpha_s=\min\Big(0.99,\ \frac{8+\sum_j n_j}{10+\sum_j \big(n_j+[n_j<\gamma_j]\big)}\Big),
 \end{equation}
-where round $j$ of state $s$ sent $\gamma_j$ tokens and $n_j$ of them were accepted. The round trip enters the model as a distribution. Its level is the median of the last five round trips, which follows a change in delay within a few rounds while ignoring single spikes. Its shape is given by the excesses of the last 64 round trips over the median of the five before each of them. \cape{} evaluates $o$ over these 64 samples, each shifted to the current level, so a delay change moves the whole distribution at once while the jitter of the path is kept. The per-token draft cost $\hat d$ is the median, over recent background calls, of the call duration minus the overhead $c=10$\,ms, divided by the number of tokens drafted (24.5\,ms before the first call). The power ratio is fixed at $r=2.3$ and, like every other setting of \cape{}, is the same for all four model pairs and all network conditions.
+where round $j$ of state $s$ sent $\gamma_j$ tokens and $n_j$ of them were accepted. The round trip enters the model as a distribution. Its level is the median of the last five round trips, which follows a change in delay within a few rounds while ignoring single spikes. Its shape is given by the excesses of the last 64 round trips over the median of the five before each of them. \cape{} evaluates the expectations of Eq.~\eqref{eq:wait} over these 64 samples, each shifted to the current level, so a delay change moves the whole distribution at once while the jitter of the path is kept. The per-token draft cost $\hat d$ is the median, over recent background calls, of the call duration minus the overhead $c=10$\,ms, divided by the number of tokens drafted (24.5\,ms before the first call). The power ratio is fixed at $r=2.3$ and, like every other setting of \cape{}, is the same for all four model pairs and all network conditions.
 
 \begin{algorithm}[t]
 \caption{One \cape{} round on the device}
 \label{alg:cape}
 \begin{algorithmic}[1]
 \Require prefix $x$; pending lookahead $L$ drafted from $x'$; estimates $\hat\alpha_M,\hat\alpha_H,\hat V,\hat d$
-\State $(\gamma_f,h)\gets\arg\min J(\gamma_f,h)$ \Comment{Eq.~\eqref{eq:objective}}
+\State $(\gamma_f,h)\gets\arg\min C(\gamma_f,h)$ \Comment{Eq.~\eqref{eq:objective}}
 \If{$x=x'\Vert\ell_1$} \Comment{hit}
   \State $D\gets\ell_{2:h}$, topped up to $\gamma_f$ tokens
 \Else \Comment{miss}
@@ -49,12 +53,13 @@ where round $j$ of state $s$ sent $\gamma_j$ tokens and $n_j$ of them were accep
 \EndIf
 \State send $(x,D)$ to the verifier
 \State draft $h$ tokens $L$ from $x\Vert D$ in the background
-\State receive $(n,t)$; $x\gets x\Vert d_{1:n}\Vert t$
+\State receive $(n,t)$; \textbf{if} $n<|D|$ \textbf{then} interrupt $L$
+\State $x\gets x\Vert d_{1:n}\Vert t$
 \State update $\hat\alpha_M$ or $\hat\alpha_H$, $\hat V$ and $\hat d$
 \end{algorithmic}
 \end{algorithm}
 
 \subsection{Decision and execution}
-\cape{} evaluates Eq.~\eqref{eq:objective} for all $\gamma_f\in\{1,\dots,\Gamma\}$ and $h\in\{2,\dots,\Gamma+1\}$ with $\Gamma=8$. The 64 candidates are evaluated in closed form on the Jetson CPU, and this time is part of every measured wall time. Lookahead is capped by the remaining token budget and skipped in the last round. Lookahead still pending at the end of a request is awaited and charged to its wall time and energy.
+\cape{} evaluates Eq.~\eqref{eq:objective} for all $\gamma_f\in\{1,\dots,\Gamma\}$ and $h\in\{2,\dots,\Gamma+1\}$ with $\Gamma=8$. The 64 candidates are evaluated in closed form on the Jetson CPU in a median of \E{ctl:decide} per round, and this time is part of every measured wall time. Lookahead is capped by the remaining token budget and skipped in the last round. Lookahead still pending at the end of a request is awaited and charged to its wall time and energy.
 
 \emph{Exactness.} \cape{} changes only which draft tokens are proposed, never how they are verified. A prefetched block is reused only if the full verified prefix, including the bonus token, equals the prefix from which it was drafted. Every emitted token is therefore the target model's top choice for its prefix, exactly as in any other strict greedy configuration.

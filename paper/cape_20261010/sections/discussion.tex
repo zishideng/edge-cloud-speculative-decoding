@@ -1,7 +1,7 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\emph{Why calibration-free matters.} Every competitive baseline in our evaluation needs a setting chosen for the pair and the delay: the window of a fixed pipeline, PEARL's draft length, PipeSD's two thresholds. Such settings are found offline and are right only for the condition they were found in. \cape{} replaces them with quantities it measures in every round, the acceptance in each state, the round-trip distribution and the draft cost, and a single energy weight that expresses the deployment's priority. The same code and settings run all four pairs and all network conditions in this paper.
+\emph{Why calibration-free matters.} Every competitive baseline in our evaluation needs a setting chosen for the pair and the delay: the window of a fixed pipeline, PEARL's draft length, PipeSD's two thresholds. Such settings are found offline and are right only for the condition they were found in; the best fixed window alone takes three different values across our twelve settings. \cape{} replaces them with quantities it measures in every round, the acceptance in each state, the round-trip distribution and the draft cost, and a single energy weight that expresses the deployment's priority. The same code and settings run all four pairs and all network conditions in this paper.
 
 \emph{Network conditions.} The real Wi-Fi path already contributes jitter on top of the injected delays. The distributional round-trip estimate turns this jitter into an input: it prices the rounds in which a long lookahead would finish after a short round trip, and it follows a change in delay within five rounds.
 
@@ -9,4 +9,4 @@
 
 \emph{Faster verifiers.} Faster data-center GPUs or incremental verification shorten the round trip. \cape{} measures the round trip online and responds by shortening its lookahead, so improvements on the cloud side and \cape{} compose.
 
-\emph{Extensions.} The two-state model extends directly to other draft sources, such as retrieval-based or self-speculative drafters, and to sampling-based verification, whose acceptance rates \cape{} would estimate in the same way. Interrupting background drafts as soon as a rejection makes them useless, as PicoSpec does, is orthogonal to the choice of windows and can be added to \cape{} directly; online calibration of the power ratio from the board's sensor is another natural addition.
+\emph{Extensions.} The two-state model extends directly to other draft sources, such as retrieval-based or self-speculative drafters, and to sampling-based verification, whose acceptance rates \cape{} would estimate in the same way. Online calibration of the power ratio from the board's sensor is another natural addition.

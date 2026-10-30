@@ -1,0 +1,19 @@
+\begin{tabular}{@{}lrrrrrrrrrrrrr@{}}
+\toprule
+ & \multicolumn{3}{c}{Gemma-3 270M/4B} & \multicolumn{3}{c}{Llama 1B/8B} & \multicolumn{3}{c}{Qwen 0.5B/7B} & \multicolumn{3}{c}{Gemma-2 2B/9B} & \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}\cmidrule(lr){11-13}
+Method & 2\,ms & 100\,ms & dyn. & 2\,ms & 100\,ms & dyn. & 2\,ms & 100\,ms & dyn. & 2\,ms & 100\,ms & dyn. & Worst\\
+\midrule
+Sync-4 (tok/s) & 21.4 & 12.3 & 16.5 & 23.5 & 12.8 & 17.6 & 25.8 & 13.2 & 19.1 & 14.7 & 9.7 & 12.1 & 36.8\\
+\midrule
+HF assisted & $-$17.8 & $-$1.6 & $-$9.7 & $-$6.1 & +2.6 & $-$3.0 & $-$5.9 & $-$2.0 & $-$7.5 & $-$13.3 & +6.2 & $-$4.7 & 42.8\\
+PipeSD & $-$10.3 & +8.0 & +0.5 & +6.3 & +20.5 & +15.0 & +28.0 & +41.8 & +27.7 & $-$4.5 & +13.9 & +4.3 & 37.5\\
+PEARL & +24.9 & +24.5 & +17.8 & \textbf{+15.1} & +41.6 & +13.0 & +25.1 & +36.5 & +33.1 & \textbf{+14.3} & +37.5 & +10.9 & 13.9\\
+PicoSpec-2 & +29.5 & $-$0.3 & +12.8 & +15.0$^\dagger$ & +11.9 & +15.2 & +41.9$^\dagger$ & +7.1 & +27.0 & +7.8$^\dagger$ & +37.0$^\dagger$ & +19.6$^\dagger$ & 32.3\\
+PicoSpec-4 & \textbf{+43.5$^\dagger$} & +19.5 & +23.6 & +5.2 & +41.6$^\dagger$ & +20.9$^\dagger$ & +40.0 & +35.8 & +39.9$^\dagger$ & $-$4.1 & +26.5 & +5.0 & 16.1\\
+PicoSpec-8 & +33.5 & +27.6$^\dagger$ & +26.7$^\dagger$ & $-$15.1 & +26.9 & +2.4 & +20.1 & +51.1$^\dagger$ & +32.2 & $-$18.7 & +0.3 & $-$11.3 & 28.9\\
+\midrule
+\capee{} & +38.4 & +23.2 & +29.9 & +14.9 & +35.4 & +23.4 & +43.6 & +37.9 & +40.7 & +13.3 & \textbf{+37.9} & \textbf{+20.5} & 12.8\\
+\capes{} & +38.6 & \textbf{+34.4} & \textbf{+33.3} & +12.2 & \textbf{+44.5} & \textbf{+24.3} & \textbf{+45.3} & \textbf{+58.2} & \textbf{+49.7} & +11.0 & +35.7 & +18.7 & 3.4\\
+\bottomrule
+\end{tabular}

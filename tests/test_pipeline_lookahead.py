@@ -10,7 +10,7 @@ from common.pipeline_model import choose_windows
 from edge.edge_client import EdgeClient
 from edge.edge_client_adaedl import AdaEDLClient, entropy_lower_bound
 from edge.edge_client_pipeline import POSITION_HISTORY, MarkovPipelineClient, position_curve
-from experiments.progress_probe import METHODS, draft_n_probs
+from experiments.progress_probe import DIST_VARIANTS, METHODS, draft_n_probs
 
 
 def result(n, sent):
@@ -197,6 +197,32 @@ class MarkovClientTests(unittest.TestCase):
         self.assertNotEqual((dist['fresh_gamma'], dist['lookahead']), (1, 2))
         self.assertEqual(choose_windows(.87, .87, [50.0], 10, 20, 0, 2.3, 8),
                          choose_windows(.87, .87, 50.0, 10, 20, 0, 2.3, 8))
+
+    def test_no_lookahead_and_interrupt_pricing(self):
+        from common.pipeline_model import choose_windows
+        # Lookahead 0: every round is a miss, the round costs draft + mean round trip.
+        sync = choose_windows(.8, .8, [40.0], 10, 20, 0, 2.3, 8, fresh_options=[2], lookahead_options=[0])
+        self.assertEqual(sync['hit_share'], 0)
+        self.assertAlmostEqual(sync['cost'], (10 + 40 + 40) / (1 + .8 + .64))
+        # A long background is free when the round trip covers it, and an interrupt only removes waiting.
+        for h in (2, 5):
+            plain = choose_windows(.8, .8, [40.0], 10, 20, 0, 2.3, 8, fresh_options=[2], lookahead_options=[h])
+            cut = choose_windows(.8, .8, [40.0], 10, 20, 0, 2.3, 8, fresh_options=[2], lookahead_options=[h],
+                                 interrupt=True)
+            self.assertLessEqual(cut['cost'], plain['cost'])
+        self.assertLess(cut['cost'], plain['cost'])
+        # Without lookahead the option set only grows, so the best cost cannot get worse.
+        base = choose_windows(.8, .8, [10.0], 10, 20, .5, 2.3, 8)
+        more = choose_windows(.8, .8, [10.0], 10, 20, .5, 2.3, 8, lookahead_options=[0] + list(range(2, 10)))
+        self.assertLessEqual(more['cost'], base['cost'])
+
+    def test_interrupt_client_flags(self):
+        from edge.edge_client_pipeline import MarkovInterruptClient
+        c = MarkovInterruptClient(config=self.c.config, cost_model='dist', no_lookahead=True)
+        self.assertTrue(c.interrupt_on_reject)
+        self.assertFalse(MarkovPipelineClient(config=self.c.config).interrupt_on_reject)
+        c._choose_gamma(4, 100)
+        self.assertIn(c._planned_h, [0] + list(range(2, 10)))
 
     def test_dist_cost_model_shifts_samples_to_current_level(self):
         c = MarkovPipelineClient(config=self.c.config, cost_model='dist')
@@ -440,7 +466,12 @@ class RunnerTests(unittest.TestCase):
                                         'markov_w0_robust', 'markov_w05_robust',
                                         'markov_w0_floor2', 'markov_w05_floor2',
                                         'markov_w0_dist', 'markov_w05_dist', 'markov_w0_fresh4', 'markov_w0_pre', 'markov_w05_pre', 'markov_w025_pre', 'markov_w1_pre', 'markov_w2_pre',
-                                        'picospec', 'pipesd', 'hf_heuristic', 'hf_default', 'pearl'})
+                                        'picospec', 'pipesd', 'hf_heuristic', 'hf_default', 'pearl'}
+                                       | set(DIST_VARIANTS)
+                                       | {'markov_w0_fresh4_int', 'markov_w0_int', 'picospec_g2', 'picospec_g8'})
+        self.assertEqual(len(DIST_VARIANTS), 40)
+        self.assertEqual(DIST_VARIANTS['markov_w2_dist'], 2.)
+        self.assertEqual(DIST_VARIANTS['markov_w05_dist_pos_int_h0'], .5)
         self.assertEqual(draft_n_probs('adaedl'), 20)
         self.assertEqual(draft_n_probs('markov'), 0)
         self.assertEqual(draft_n_probs('hf_default'), 1)

@@ -13,6 +13,8 @@ Let $x$ be the current prefix. In each round the device drafts $\gamma$ tokens $
 
 \emph{Lookahead.} While the cloud verifies $D$, the device can draft $h$ further tokens $L=(\ell_1,\dots,\ell_h)$ from $x\Vert D$, assuming full acceptance; $\ell_1$ is the draft model's guess of the bonus token. If $n=\gamma$ and $t=\ell_1$, then $\ell_{2:h}$ is a valid draft for the next round and can be sent at once (a \emph{hit}). Otherwise $L$ is discarded (a \emph{miss}). A fixed window with $h=\gamma+1$ prefetches exactly one complete next block (Fig.~\ref{fig:timeline}(b)).
 
+\emph{Interruption.} If the verdict rejects one of the sent tokens, the lookahead drafted from them is useless before it is finished. PicoSpec interrupts it as soon as the verdict arrives~\cite{picospec2026}, which frees the draft server for the next round. Every pipelined fixed window in our evaluation, and \cape{}, interrupts in this way.
+
 \subsection{Testbed}
 \label{sec:testbed}
 \emph{Edge device.} The edge device is an NVIDIA Jetson Orin Nano Super developer kit (8\,GB) in its 25\,W power mode, running JetPack 6.2.1 (L4T R36.4.7). It serves the draft model with llama.cpp (build b9744) as a single-slot HTTP server with all layers on the GPU. Board input power is sampled at 10\,Hz from the INA3221 VDD\_IN rail and integrated over each request. This is the gross energy the device pays, including idle and operating-system power.
@@ -46,6 +48,6 @@ Three properties of the edge--cloud loop shape our design. \emph{Fresh drafting 
 \begin{equation}
 E \approx P_0\, T + P_d\, B, \label{eq:energy}
 \end{equation}
-where $T$ is the request's wall time, $B$ the draft server's busy time, and $P_0$ and $P_d$ the base and draft-active power. Lookahead drafted during verification is free in $T$ but not in $B$, and a discarded block raises the energy bill without emitting a token.
+where $T$ is the request's wall time, $B$ the draft server's busy time, and $P_0$ and $P_d$ the base and draft-active power. Lookahead drafted during verification is free in $T$ but not in $B$, and a discarded block raises the energy bill without emitting a token. Interruption bounds the time that a doomed lookahead costs by the round trip, but its energy is spent until the cut.
 
 These properties lead to four goals. (i)~Keep fresh drafting off the critical path. (ii)~Fill the verification time with lookahead, but only as much as is likely to be reused, and less when energy matters. (iii)~Adapt to the round trip, its jitter and the acceptance rate, which vary across and within requests. (iv)~Leave the cloud server and the verification rule unchanged.

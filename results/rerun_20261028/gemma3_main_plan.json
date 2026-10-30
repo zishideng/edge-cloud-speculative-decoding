@@ -1,0 +1,196 @@
+{
+ "phase": "gemma3_main",
+ "campaign": "results/rerun_20261028",
+ "model_pair": "gemma3_270m_4b",
+ "seed": 20261102,
+ "role": "Main rerun for gemma3: 110 prompts x 2 ms / 100 ms / dynamic, interrupt-equipped fixed windows (g2/g4/g8) and baselines vs CAPE-S/E with interrupt, all in one session.",
+ "methods": [
+  "picospec_g2",
+  "picospec",
+  "picospec_g8",
+  "sync_g4",
+  "hf_default",
+  "pipesd",
+  "pearl",
+  "markov_w0_dist_int",
+  "markov_w05_dist_int"
+ ],
+ "baselines": [
+  "picospec_g2",
+  "picospec",
+  "picospec_g8",
+  "sync_g4"
+ ],
+ "indices": {
+  "gsm8k": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   45,
+   46,
+   47,
+   48,
+   49
+  ],
+  "humaneval": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29
+  ],
+  "mtbench": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29
+  ]
+ },
+ "scenarios": [
+  {
+   "name": "low",
+   "delay_ms": 2,
+   "pipesd": {
+    "r1": 0.066,
+    "r2": 0.827
+   },
+   "pearl": {
+    "gamma": 2
+   }
+  },
+  {
+   "name": "high",
+   "delay_ms": 100,
+   "pipesd": {
+    "r1": 0.907,
+    "r2": 0.562
+   },
+   "pearl": {
+    "gamma": 7
+   }
+  },
+  {
+   "name": "dynamic",
+   "delay_ms": null,
+   "schedule": {
+    "levels": [
+     2,
+     100
+    ],
+    "mean_dwell_ms": 1500,
+    "horizon_ms": 180000
+   },
+   "pipesd": {
+    "r1": 0.847,
+    "r2": 0.058
+   },
+   "pearl": {
+    "gamma": 4
+   }
+  }
+ ],
+ "primary_scenarios": [
+  "low",
+  "high",
+  "dynamic"
+ ],
+ "repeats": 1,
+ "max_tokens": 512,
+ "candidate_definition": "All methods of a phase run interleaved in one session (balanced per-prompt orders), so they share network and cloud conditions. CAPE = markov_*_dist_int: two-state geometric window model (priors, r=2.3, fresh 1..8, lookahead 2..9), distribution-aware round-trip overlap (last 64 round trips shifted to the median of the last 5), and PicoSpec-style interrupt of background drafting once verification rejects a sent token, priced by the model (common/pipeline_model.py choose_windows(interrupt=True), edge/edge_client_pipeline.py MarkovInterruptClient). Fixed windows all carry the interrupt: picospec_gN = fresh N, lookahead N+1, interrupted on rejection; picospec = N=4. sync_g4: no lookahead. PEARL gamma and PipeSD r1/r2 per pair and delay as in the earlier baseline runs (not retuned).",
+ "criteria": "Per scenario and pooled: CAPE vs the best interrupt-equipped fixed window (chosen after measurement) and vs every baseline; throughput, J/token, quality.",
+ "measurement": "Draft: gemma-3-270m-it Q8_0 (ggml-org, sha256 0ef57d2c), --parallel 1 --ctx-size 2048 --cache-ram 256, no mmap, LLAMA_ARG_SWA_FULL=1, LLAMA_ARG_DIO=1; <bos> prepended via prepend_bos_id 2. Cloud: google/gemma-3-4b-it with vLLM online FP8, max_model_len 2048, verify_server.py hash 0dbd75 with prefix_cache_verify=true. Strict K1, target cap1, draft n_probs0. Gross Jetson board energy; equal 16-token warmups.",
+ "stopping": "Exactly 2970 timed requests; resumed with the same plan after a lost connection."
+}

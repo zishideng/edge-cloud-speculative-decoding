@@ -8,33 +8,33 @@ Llama-3.1-8B（AWQ）目标模型提供草稿，严格接受 K=1。当前方法�
 
 ## 论文
 
-[CAPE 论文初稿](paper/cape_20261010/)：[PDF](paper/cape_20261010/main.pdf)、
-[LaTeX 包](paper/cape_20261010/cape_20261010_latex.zip)。文中所有数字由
-`paper/cape_20261010/scripts/` 从原始记录生成。后续修改遵循[论文写作说明](docs/WRITING_GUIDELINES.md)。
+[CAPE 论文初稿](paper/cape_20261010/)：[LaTeX 包](paper/cape_20261010/cape_20261010_latex.zip)（在 Overleaf 编译）。
+文中所有数字由 `paper/cape_20261010/scripts/make_assets.py` 从原始记录生成。后续修改遵循[论文写作说明](docs/WRITING_GUIDELINES.md)。
 
 ## 主要实验
 
-| 实验 | 目录 | 内容 |
-|---|---|---|
-| Llama / Qwen / Gemma-2：CAPE 与固定窗口 | `results/final_20261020/{llama,qwen,gemma}_full_dist_110` | 110 题 × 低/高/动态延迟 |
-| Llama / Qwen / Gemma-2：流水线基线 | `results/baselines_20261022/{llama,qwen,gemma}_new_110` | PEARL、PicoSpec、PipeSD、HF，与上一行按题目合并 |
-| Llama：能耗权重扫描 | `results/baselines_20261022/llama_energy_110` | w=0.25/1/2 |
-| Gemma-3：全部方法 | `results/gemma3_20261026/gemma3_full_110` | 110 题 × 3 种延迟 × 10 种方法 |
-| Gemma-3：时延扫描、消融 | `results/gemma3_20261026/gemma3_delay_sweep`、`gemma3_ablation` | 30 题 |
+2026-10-28 重跑，同一对模型的所有方法在同一会话内交替运行：
 
-每个目录的 `analysis/SUMMARY.md` 是汇总，过程记录见 `research_log.md`。
-原始逐请求记录和功率采样（`*.json`）只保存在本机，不上传 GitHub。
+| 实验 | 目录（`results/rerun_20261028/`） | 内容 |
+|---|---|---|
+| 主对比：9 种方法 × 低/高/动态延迟 | `gemma3_main`、`llama_main`、`qwen_main`、`gemma2_main` | 110 题（Gemma-2 取所有方法都完成的 61/52/61 题） |
+| Gemma-3：时延扫描 | `gemma3_sweep` | 10/25/50/200 ms，30 题 |
+| Gemma-3：消融、能耗权重扫描 | `gemma3_ablation`、`gemma3_weights` | 30 题 |
+
+汇总分析见 `results/rerun_20261028/analysis_vs_sync.py`。
+原始逐请求记录和功率采样（`*.json`）只保存在本机，不上传 GitHub；论文用到的逐请求摘要在
+`paper/cape_20261010/data/records.json`。
 
 运行一组对比（计划文件写明方法、题目、延迟、种子，运行前冻结）：
 
 ```bash
-python3 -u -m experiments.progress_probe --plan results/gemma3_20261026/gemma3_full_110_plan.json
+python3 -u -m experiments.progress_probe --plan results/rerun_20261028/gemma3_main_plan.json
 python3 -u -m experiments.progress_probe --plan <plan.json> --resume        # 中断后续跑
 python3 -m experiments.progress_probe --report <campaign>/<phase>          # 只重算报告
 ```
 
-方法：`sync_g4`（无预取）、`fixed_g2`/`fixed_fast`/`fixed_g8`（固定 γ 与 h=γ+1）、
-`adaedl`（AdaEDL 基线）、`markov`/`markov_w0`/`markov_w05`（CAPE，w=0.25/0/0.5）。
+方法：`sync_g4`（同步投机解码，无预取）、`picospec_g2`/`picospec`/`picospec_g8`（固定 γ 与 h=γ+1，拒绝即中断预取）、
+`pearl`、`pipesd`、`hf_default`、`markov_w0_dist_int`/`markov_w05_dist_int`（CAPE-S/CAPE-E，w=0/0.5，带中断）。
 详见[运行手册](docs/RUNBOOK_PROGRESS_PROBES.md)。
 
 ## 模型服务

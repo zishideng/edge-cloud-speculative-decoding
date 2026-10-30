@@ -22,7 +22,7 @@ from common.result_metrics import enrich
 from edge.edge_client_lookahead import FixedLookaheadClient
 from edge.edge_client_adaedl import DEFAULT_TOP_K, AdaEDLClient
 from edge.edge_client_baselines import HFDefaultClient, HFHeuristicClient, PEARLClient, PicoSpecClient, PipeSDClient
-from edge.edge_client_pipeline import MarkovPipelineClient
+from edge.edge_client_pipeline import MarkovInterruptClient, MarkovPipelineClient
 from edge.experiment_live import LiveExperiment
 from experiments.adaptive_research import (
     balanced_method_orders, energy_check, hardware_snapshot, percentile,
@@ -49,6 +49,20 @@ MARKOV_WEIGHTS = {'markov': .25, 'markov_w0': 0., 'markov_w05': .5, 'markov_w0_n
 # "floor2" variants: robust, but every round sends at least 2 tokens (fresh window >= 2, lookahead >= 3).
 # "dist" variants: the model averages max(round trip, background) over the last 64 round trips
 # (shifted to the median of the last 5) instead of using one round-trip estimate.
+# Low-delay variants of dist, any combination of the suffixes in this order: "_pos" per-position
+# acceptance curves, "_int" PicoSpec-style interrupt of rejected background drafting (priced by the
+# model), "_h0" lookahead 0 (no background drafting) allowed in the search.
+DIST_FLAGS = ('pos', 'int', 'h0')
+DIST_WEIGHTS = (('w0', 0.), ('w025', .25), ('w05', .5), ('w1', 1.), ('w2', 2.))
+DIST_VARIANTS = {f'markov_{w}_dist'+''.join(f'_{f}' for i, f in enumerate(DIST_FLAGS) if mask >> i & 1): weight
+                 for w, weight in DIST_WEIGHTS for mask in range(2**len(DIST_FLAGS))}
+METHODS += tuple(m for m in DIST_VARIANTS if m not in METHODS)
+MARKOV_WEIGHTS.update(DIST_VARIANTS)
+# Interrupt versions of the ablation arms: "fresh4_int" (fresh window 4, adaptive lookahead, dist) and
+# "w0_int" (v1 single round-trip estimate) as markov_w0_fresh4 and markov_w0 plus the interrupt.
+MARKOV_WEIGHTS.update({'markov_w0_fresh4_int': 0., 'markov_w0_int': 0.})
+# Fixed windows with PicoSpec's interrupt; picospec itself is the 4-token window.
+METHODS += ('markov_w0_fresh4_int', 'markov_w0_int', 'picospec_g2', 'picospec_g8')
 # "fresh4" (ablation): dist, but the fresh window is fixed at 4 like Fixed-4; only the lookahead adapts.
 
 
@@ -239,9 +253,12 @@ def resume_state(directory, plan_path):
 
 def run(args):
     plan=json.loads(Path(args.plan).read_text())
-    # Tuning plans (tune_pipesd.py) evaluate one method and need no fixed_fast reference arm.
+    # Tuning plans (tune_pipesd.py) evaluate one method and need no fixed_fast reference arm; nor do
+    # plans whose declared baselines are all among their own methods.
+    own_baselines=set(plan.get('baselines',[]))<=set(plan['methods'])
     if any(m not in METHODS for m in plan['methods']) or ('fixed_fast' not in plan['methods']
-                                                          and not plan.get('tuning')):
+                                                          and not plan.get('tuning')
+                                                          and not (plan.get('baselines') and own_baselines)):
         raise ValueError('Unsupported methods or missing fixed_fast baseline')
     directory=ROOT/plan.get('campaign','results/progress_review_20261009')/plan['phase']
     samples={name:[json.loads(line) for line in (ROOT/paths[0]).read_text().splitlines() if line.strip()]
@@ -353,7 +370,17 @@ def execute(live,example,index,scenario,method,pipesd=None,pearl=None):
     c=live.c;original=live.client
     gamma=4
     if method in MARKOV_WEIGHTS:
-        if method.endswith('_nocap'):
+        if method=='markov_w0_fresh4_int':
+            client=MarkovInterruptClient(c['DRAFT_URL'],c,energy_weight=0.,cost_model='dist',fresh_min=4,fresh_max=4)
+        elif method=='markov_w0_int':
+            client=MarkovInterruptClient(c['DRAFT_URL'],c,energy_weight=0.)
+        elif method in DIST_VARIANTS:
+            flags=method.split('_dist',1)[1].split('_')[1:]
+            cls=MarkovInterruptClient if 'int' in flags else MarkovPipelineClient
+            client=cls(c['DRAFT_URL'],c,energy_weight=MARKOV_WEIGHTS[method],cost_model='dist',
+                       acceptance_model='position' if 'pos' in flags else 'geometric',
+                       history_key=method,no_lookahead='h0' in flags)
+        elif method.endswith('_nocap'):
             client=MarkovPipelineClient(c['DRAFT_URL'],dict(c,GAMMA_MAX=NOCAP_LOOKAHEAD),
                                         energy_weight=MARKOV_WEIGHTS[method],fresh_max=8,
                                         lookahead_max=NOCAP_LOOKAHEAD)
@@ -377,8 +404,8 @@ def execute(live,example,index,scenario,method,pipesd=None,pearl=None):
             client=MarkovPipelineClient(c['DRAFT_URL'],c,energy_weight=MARKOV_WEIGHTS[method])
     elif method=='adaedl':
         client=AdaEDLClient(c['DRAFT_URL'],c)
-    elif method=='picospec':
-        client=PicoSpecClient(c['DRAFT_URL'],c)
+    elif method.startswith('picospec'):
+        client=PicoSpecClient(c['DRAFT_URL'],c,gamma=4 if method=='picospec' else int(method.removeprefix('picospec_g')))
     elif method=='pipesd':
         if not pipesd:
             raise ValueError('pipesd needs tuned r1/r2 in the plan scenario')

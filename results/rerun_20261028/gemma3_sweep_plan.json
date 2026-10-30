@@ -1,0 +1,99 @@
+{
+ "phase": "gemma3_sweep",
+ "campaign": "results/rerun_20261028",
+ "model_pair": "gemma3_270m_4b",
+ "seed": 20261111,
+ "role": "Delay sweep on Gemma-3, 30 prompts, fixed 10/25/50/200 ms (2 and 100 ms come from gemma3_main): interrupt fixed windows, CAPE-S with interrupt and PEARL (gamma from the linear round-trip fit, as before).",
+ "methods": [
+  "picospec_g2",
+  "picospec",
+  "picospec_g8",
+  "markov_w0_dist_int",
+  "pearl"
+ ],
+ "baselines": [
+  "picospec_g2",
+  "picospec",
+  "picospec_g8"
+ ],
+ "indices": {
+  "gsm8k": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9
+  ],
+  "humaneval": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9
+  ],
+  "mtbench": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9
+  ]
+ },
+ "scenarios": [
+  {
+   "name": "d10",
+   "delay_ms": 10,
+   "pearl": {
+    "gamma": 3
+   }
+  },
+  {
+   "name": "d25",
+   "delay_ms": 25,
+   "pearl": {
+    "gamma": 3
+   }
+  },
+  {
+   "name": "d50",
+   "delay_ms": 50,
+   "pearl": {
+    "gamma": 5
+   }
+  },
+  {
+   "name": "d200",
+   "delay_ms": 200,
+   "pearl": {
+    "gamma": 12
+   }
+  }
+ ],
+ "primary_scenarios": [
+  "d10",
+  "d25",
+  "d50",
+  "d200"
+ ],
+ "repeats": 1,
+ "max_tokens": 512,
+ "candidate_definition": "All methods of a phase run interleaved in one session (balanced per-prompt orders), so they share network and cloud conditions. CAPE = markov_*_dist_int: two-state geometric window model (priors, r=2.3, fresh 1..8, lookahead 2..9), distribution-aware round-trip overlap (last 64 round trips shifted to the median of the last 5), and PicoSpec-style interrupt of background drafting once verification rejects a sent token, priced by the model (common/pipeline_model.py choose_windows(interrupt=True), edge/edge_client_pipeline.py MarkovInterruptClient). Fixed windows all carry the interrupt: picospec_gN = fresh N, lookahead N+1, interrupted on rejection; picospec = N=4. sync_g4: no lookahead. PEARL gamma and PipeSD r1/r2 per pair and delay as in the earlier baseline runs (not retuned).",
+ "criteria": "Best interrupt fixed window per delay; CAPE-S and PEARL vs it.",
+ "measurement": "Draft: gemma-3-270m-it Q8_0 (ggml-org, sha256 0ef57d2c), --parallel 1 --ctx-size 2048 --cache-ram 256, no mmap, LLAMA_ARG_SWA_FULL=1, LLAMA_ARG_DIO=1; <bos> prepended via prepend_bos_id 2. Cloud: google/gemma-3-4b-it with vLLM online FP8, max_model_len 2048, verify_server.py hash 0dbd75 with prefix_cache_verify=true. Strict K1, target cap1, draft n_probs0. Gross Jetson board energy; equal 16-token warmups.",
+ "stopping": "Exactly 600 timed requests."
+}

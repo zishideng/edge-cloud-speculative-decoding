@@ -1,24 +1,22 @@
 \section{Reproducibility}
 \label{app:repro}
-All numbers, tables and figures in this paper are generated from retained raw records by \path{scripts/extract_evidence.py} and \path{scripts/make_assets.py}; the text reads every value from the generated \path{numbers.tex}. The raw records, power traces, frozen plans and source snapshots are in the repository:
+All numbers, tables and figures in this paper are generated from retained raw records by \path{scripts/make_assets.py}; the text reads every value from the generated \path{numbers.tex}. The raw records, power traces, frozen plans and source snapshots are in \path{results/rerun_20261028}, one directory per session:
 \begin{itemize}
-\item Llama: \path{results/final_20261020/llama_full_dist_110} (Sync-4, fixed windows, \cape{}) and \path{results/baselines_20261022/llama_new_110} (PEARL, PicoSpec, PipeSD, HF assisted);
-\item Qwen: \path{results/final_20261020/qwen_full_dist_110} and \path{results/baselines_20261022/qwen_new_110};
-\item Gemma-2: \path{results/final_20261020/gemma_full_dist_110} and \path{results/baselines_20261022/gemma_new_110};
-\item Gemma-3: \path{results/gemma3_20261026/gemma3_full_110} (all ten methods), \path{gemma3_delay_sweep} and \path{gemma3_ablation};
-\item PipeSD threshold tuning: \path{results/baselines_20261022/*_pipesd_tune_v2} and \path{results/gemma3_20261026/gemma3_pipesd_tune}.
+\item main comparison: \path{gemma3_main}, \path{llama_main}, \path{qwen_main} and \path{gemma2_main} (all nine methods of a pair interleaved in one session);
+\item delay sweep (Gemma-3, 10/25/50/200\,ms): \path{gemma3_sweep}; its 2 and 100\,ms points use the same 30 prompts of \path{gemma3_main};
+\item ablation and energy-weight sweep (Gemma-3): \path{gemma3_ablation} and \path{gemma3_weights}.
 \end{itemize}
-Requests of the same pair, condition and prompt are paired across phases; all phases of a pair share the prompts, seeds, dynamic delay schedules, draft server and verification service. Models: Llama-3.2-1B-Instruct and Llama-3.1-8B-Instruct~\cite{llama3}, Qwen2.5-0.5B/7B-Instruct~\cite{qwen25}, Gemma-2-2B/9B-it~\cite{gemma2} and Gemma-3-270M/4B-it~\cite{gemma3}, with the quantizations of Table~\ref{tab:pairs} (AWQ~\cite{awq2024} for the Llama, Qwen and Gemma-2 targets). Method identifiers in the raw records map to the names used here as follows.
+Models: Llama-3.2-1B-Instruct and Llama-3.1-8B-Instruct~\cite{llama3}, Qwen2.5-0.5B/7B-Instruct~\cite{qwen25}, Gemma-2-2B/9B-it~\cite{gemma2} and Gemma-3-270M/4B-it~\cite{gemma3}, with the quantizations of Table~\ref{tab:pairs} (AWQ~\cite{awq2024} for the Llama, Qwen and Gemma-2 targets). Method identifiers in the raw records map to the names used here as follows.
 \begin{center}\footnotesize
 \begin{tabular}{@{}ll@{\qquad}ll@{}}
 \toprule
 Record & Paper & Record & Paper\\
 \midrule
-\texttt{sync\_g4} & Sync-4 & \texttt{markov\_w0\_dist} & \capes{} ($w=0$)\\
-\texttt{fixed\_g2} & Fixed-2 & \texttt{markov\_w05\_dist} & \capee{} ($w=0.5$)\\
-\texttt{fixed\_fast} & Fixed-4 & \texttt{pearl} & PEARL\\
-\texttt{fixed\_g8} & Fixed-8 & \texttt{picospec} & PicoSpec\\
-\texttt{hf\_default} & HF assisted & \texttt{pipesd} & PipeSD\\
+\texttt{sync\_g4} & Sync-4 & \texttt{markov\_w0\_dist\_int} & \capes{} ($w=0$)\\
+\texttt{picospec\_g2} & PicoSpec-2 & \texttt{markov\_w05\_dist\_int} & \capee{} ($w=0.5$)\\
+\texttt{picospec} & PicoSpec-4 & \texttt{pearl} & PEARL\\
+\texttt{picospec\_g8} & PicoSpec-8 & \texttt{pipesd} & PipeSD\\
+\texttt{hf\_default} & HF assisted & \texttt{markov\_w0\_fresh4\_int} & ablation: fresh 4\\
 \bottomrule
 \end{tabular}
 \end{center}

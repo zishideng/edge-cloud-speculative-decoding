@@ -34,11 +34,13 @@ request, whose last prompt token was not produced by the target. If the target s
 anchor (a near-tie flipping between differently shaped forward passes), one token is drafted and
 verified normally instead.
 """
+import time
 from collections import deque
 from dataclasses import replace
 from statistics import fmean, median
 
 from common.pipeline_model import choose_windows
+from edge.edge_client_baselines import InterruptibleLookaheadClient
 from edge.edge_client_lookahead import FixedLookaheadClient
 
 # Per-position acceptance history kept across requests of one history key (for the
@@ -67,15 +69,18 @@ class MarkovPipelineClient(FixedLookaheadClient):
     """energy_weight trades time against Jetson board energy (0 = speed only);
     energy_ratio is draft-active power over base board power (about
     10.0 W / 4.3 W on the Orin Nano 25 W mode, fitted from measured requests).
+    no_lookahead=True adds lookahead 0 (nothing drafted during verification) to the search.
     """
+    interrupt_on_reject = False
 
     def __init__(self, draft_url='http://localhost:8080', config=None, energy_weight=0.25,
                  energy_ratio=2.3, call_overhead_ms=10.0, token_ms=24.5, verify_prior_ms=150.0,
                  acceptance_prior=(8, 10), fresh_max=None, lookahead_max=None, fresh_min=1,
                  acceptance_model='geometric', history_key=None, history_rounds=1024,
-                 cost_model='v1', pre_verify=False):
+                 cost_model='v1', pre_verify=False, no_lookahead=False):
         super().__init__(draft_url, config, lookahead_tokens=0)
         self.pre_verify = pre_verify
+        self.no_lookahead = no_lookahead
         self._anchor = False
         if cost_model not in ('v1', 'fit', 'mean', 'robust', 'dist'):
             raise ValueError('cost_model must be v1, fit, mean, robust or dist')
@@ -169,7 +174,8 @@ class MarkovPipelineClient(FixedLookaheadClient):
         choice = choose_windows(*acceptance, verify, call_ms, token_ms,
                                 self.energy_weight, self.energy_ratio, gamma_max,
                                 fresh_options=[0]*self.pre_verify + list(range(self.fresh_min, fresh_max + 1)),
-                                lookahead_options=range(self.fresh_min + 1, lookahead_max + 1))
+                                lookahead_options=[0]*self.no_lookahead + list(range(self.fresh_min + 1, lookahead_max + 1)),
+                                interrupt=self.interrupt_on_reject)
         self.fresh_gamma = choice['fresh_gamma']
         self._planned_h = choice['lookahead']
         # Decisions log the mean of the round-trip samples, not the samples themselves.
@@ -228,8 +234,16 @@ class MarkovPipelineClient(FixedLookaheadClient):
             self._verify_excess.append(elapsed_ms - median(list(self._verify_history)[-5:]))
         self._verify_history.append(elapsed_ms)
 
+    def _fresh_draft(self, prompt, count, temperature):
+        started = time.perf_counter()
+        ids, lps = super()._fresh_draft(prompt, count, temperature)
+        if self.no_lookahead and ids:
+            # Without lookahead the background calls alone may never measure the draft cost.
+            self._background_history.append((len(ids), (time.perf_counter()-started)*1000))
+        return ids, lps
+
     def _consumed(self, event):
-        if event['generated_tokens']:
+        if event['generated_tokens'] and not event.get('interrupted'):
             self._background_history.append((event['generated_tokens'], event['service_ms']))
 
     def _choose_h(self, draft):
@@ -268,8 +282,15 @@ class MarkovPipelineClient(FixedLookaheadClient):
                                  energy_weight=self.energy_weight, energy_ratio=self.energy_ratio,
                                  draft_probability_output=self.draft_n_probs,
                                  acceptance_model=self.acceptance_model, cost_model=self.cost_model,
-                                 pre_verify=self.pre_verify, anchor_rejections=self._anchor_rejections,
+                                 pre_verify=self.pre_verify, no_lookahead=self.no_lookahead,
+                                 interrupt_on_reject=self.interrupt_on_reject, anchor_rejections=self._anchor_rejections,
                                 search=dict(fresh_min=self.fresh_min,
                                             fresh_max=self.fresh_max or self.config['GAMMA_MAX'],
                                             lookahead_max=self.lookahead_max or self.config['GAMMA_MAX'] + 1))
         return text, metrics
+
+
+class MarkovInterruptClient(MarkovPipelineClient, InterruptibleLookaheadClient):
+    """CAPE with PicoSpec's interrupt: background drafting stops as soon as the verified prefix
+    contradicts the window it was drafted from, and the window model prices that stop."""
+    interrupt_on_reject = True

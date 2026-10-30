@@ -1,96 +1,101 @@
 \section{Evaluation}
 \label{sec:eval}
 
-We ask four questions. Is \cape{} faster than fixed windows and state-of-the-art pipelined systems when the network delay changes over time (Section~\ref{sec:main})? Does it match the best fixed window at every fixed delay and on every model pair, without being told either (Section~\ref{sec:fixed})? How does one weight trade speed for device energy (Section~\ref{sec:frontier})? And where do its gains come from (Section~\ref{sec:why})?
+We ask four questions. How much faster than synchronous speculative decoding is \cape{}, in every setting and when the delay changes over time (Section~\ref{sec:main})? Can one configuration serve every model pair and delay (Section~\ref{sec:fixed})? How does one weight trade speed for device energy (Section~\ref{sec:frontier})? And where do the gains come from (Section~\ref{sec:why})?
 
 \subsection{Methodology}
 \emph{Workloads.} Prompts are 50 GSM8K~\cite{gsm8k2021} grade-school math problems, 30 HumanEval~\cite{humaneval2021} Python function completions and the 30 first-turn questions of MT-Bench~\cite{mtbench2023}. Generation uses each model's chat template, greedy decoding and at most 512 output tokens.
 
-\emph{Network conditions.} Every request runs under three conditions, on top of the real Wi-Fi path: a fixed added delay of 2\,ms (\emph{low}), a fixed added delay of 100\,ms (\emph{high}), and a \emph{dynamic} delay that switches between 2 and 100\,ms with exponentially distributed dwell times (mean 1.5\,s), as on a mobile link that moves between coverage conditions. The dynamic schedule is seeded per prompt, so every method faces exactly the same sequence of delays.
+\emph{Network conditions.} The client holds every verification request for an added delay before sending it over the real Wi-Fi path. A verification carries a few hundred bytes of token IDs, so the hold acts as a longer propagation delay. Every request runs under three conditions: a fixed added delay of 2\,ms (\emph{low}), a fixed added delay of 100\,ms (\emph{high}), and a \emph{dynamic} delay that switches between 2 and 100\,ms with exponentially distributed dwell times (mean 1.5\,s), as on a mobile link that moves between coverage conditions. The dynamic schedule runs in wall-clock time from the start of each request and is seeded per prompt, so every method faces the same delay at the same moment of a request, however many rounds it runs.
 
-\emph{Protocol.} Each pair runs 110 prompts $\times$ 3 conditions $\times$ 10 methods, \E{x:requests} measured requests in total over the four pairs. Methods, prompts, seeds, conditions and analysis were frozen in a plan file before the first measured request, and methods are interleaved in a randomized, balanced order. Reference outputs and equal 16-token warm-ups are generated before timing starts. Throughput is the total number of output tokens divided by the total wall time, including terminal lookahead. Energy per token is the integrated board energy divided by the number of output tokens.
+\emph{Protocol.} Each pair runs 110 prompts $\times$ 3 conditions $\times$ 9 methods. The methods of a pair run interleaved in one session, in a randomized order balanced per prompt, so they share the network and cloud conditions of that session. Methods, prompts, seeds, conditions and analysis were frozen in a plan file before the first measured request; reference outputs and equal 16-token warm-ups are generated before timing starts. Gemma-2 results cover the prompts that all nine methods completed in its session (\E{gemma2:low:n} at 2\,ms and under dynamic delay, \E{gemma2:high:n} at 100\,ms). In total, the comparison rests on \E{n:main} paired requests. Throughput is the total number of output tokens divided by the total wall time, including terminal lookahead. Energy per token is the integrated board energy divided by the number of output tokens. Intervals are 95\% paired bootstrap intervals with prompts as clusters (2,000 draws).
+
+\emph{Output quality.} Strict greedy verification makes every emitted token the target's top choice for its prefix. In every setting, the GSM8K accuracy of every method lies within \E{q:gsm:maxdiff} problems of synchronous decoding; the remaining differences come from floating-point nondeterminism of batched GPU verification at near-ties, which affects synchronous decoding in the same way.
 
 \emph{Methods.} All methods share the models, servers, token-ID transport and strict greedy verification; only the edge-side policy differs.
 \begin{itemize}
-\item \textbf{Sync-4}: synchronous speculative decoding with four draft tokens per round and no lookahead.
-\item \textbf{Fixed-$\gamma$}, $\gamma\in\{2,4,8\}$: $\gamma$ draft tokens per round with a complete-block lookahead of $h=\gamma+1$. \textbf{Best fixed} is the fastest of the three, chosen separately for every pair and fixed delay after the measurement, a hindsight oracle no deployed system can match.
+\item \textbf{Sync-4}: synchronous speculative decoding with four draft tokens per round; the device waits for each verdict before drafting again. It is the reference for all speedups.
 \item \textbf{HF assisted}: assisted generation of Hugging Face Transformers~\cite{transformers2020} with its current defaults (synchronous, at most 20 draft tokens, adaptive confidence threshold).
 \item \textbf{PipeSD}~\cite{pipesd2026}: continuous streamed drafting with confidence-triggered verification; its two thresholds are tuned for every pair and condition with the paper's budget of 16 trials.
-\item \textbf{PicoSpec}~\cite{picospec2026}: optimistic drafting of the next window during verification with early interruption of background drafting on rejection, at the paper's default window of four tokens. Its fast pre-verification and probability compression require cloud changes or do not apply to greedy verification, and its truncation rule is not specified, so our implementation covers its edge-side pipeline. Under greedy drafting and verification, PicoSpec proposes and accepts exactly the tokens of Fixed-4 and differs from it only in timing, which makes it a clean measure of interruption.
 \item \textbf{PEARL}~\cite{pearl2025}: parallel drafting and verification with pre- and post-verification; its draft length is calibrated for every pair and condition from a development run, as the paper prescribes.
+\item \textbf{PicoSpec-$\gamma$}, $\gamma\in\{2,4,8\}$: the edge-side pipeline of PicoSpec~\cite{picospec2026}, with $\gamma$ draft tokens per round, a complete-block lookahead of $h=\gamma+1$ drafted during verification, and interruption of that lookahead on rejection. PicoSpec-4 is PicoSpec's default window. Its fast pre-verification and probability compression require cloud changes or do not apply to greedy verification, so our implementation covers its edge-side pipeline. \textbf{Best fixed} is the fastest of the three windows, chosen separately for every pair and delay after the measurement, a hindsight oracle no deployed system can match.
 \item \textbf{\cape{}} with $w=0$ (\capes{}, speed) and $w=0.5$ (\capee{}, energy). Both use the same settings for all pairs and conditions.
 \end{itemize}
 The baselines thus receive per-pair, per-condition calibration, and Best fixed receives hindsight; \cape{} receives neither.
 
 \begin{table*}[t]
 \centering
-\caption{Time-varying network delay (dynamic, 2/100\,ms switching): throughput, device energy per token and throughput change relative to the best fixed window ($\Delta$). Bold: fastest method per pair. $^\dagger$Fastest fixed window per pair, chosen in hindsight.}
-\label{tab:dynamic}
+\caption{Throughput change (\%) relative to synchronous speculative decoding (Sync-4, first row in tok/s) for every pair and added delay. Bold: fastest of the nine methods. $^\dagger$Best fixed window of the setting, chosen in hindsight. Worst: largest shortfall (\%) against the fastest method of a setting, over all twelve settings.}
+\label{tab:speedup}
 \footnotesize
-\setlength{\tabcolsep}{2.6pt}
-\input{tables/dynamic}
+\setlength{\tabcolsep}{3.2pt}
+\input{tables/speedup}
 \end{table*}
 
-\subsection{Time-varying delay: \cape{} is the fastest method on every pair}
+\subsection{Faster than synchronous decoding in every setting}
 \label{sec:main}
-Table~\ref{tab:dynamic} reports the dynamic condition. \capes{} is faster than every other method on all four model pairs. It outruns the hindsight-optimal fixed window by \E{x:llama:dyn:S:abssp} on Llama, \E{x:qwen:dyn:S:abssp} on Qwen, \E{x:gemmatwo:dyn:S:abssp} on Gemma-2 and \E{x:gemmathree:dyn:S:abssp} on Gemma-3, and PEARL by \E{x:dyn:S:pearl:rng}. A fixed window, or a draft length calibrated for one delay, is right for only part of the request; \cape{} re-plans every round from the round trips it has just observed and follows the delay within a few rounds.
+Table~\ref{tab:speedup} reports the throughput of every method relative to Sync-4. \capes{} is faster in all twelve pair--delay settings, by \E{x:S:sync:rng}, and its 95\% interval lies above $+$\E{x:S:sync:lo} in every one. Synchronous decoding leaves the device idle for every round trip; \cape{} spends that time drafting the next block, and spends it only where the next block is likely to be used.
 
-\cape{} is also frugal. On Llama, Qwen and Gemma-3, \capes{} is both faster and more energy-efficient than the best fixed window (\E{x:llama:dyn:S:abssv}, \E{x:qwen:dyn:S:abssv} and \E{x:gemmathree:dyn:S:abssv} lower J/token), and \capee{} lowers J/token by \E{x:dyn:E:sv:rng} at the speed of the best fixed window. Under time-varying delay, a \cape{} setting lies on the speed--energy frontier of every pair.
+\emph{Time-varying delay.} \cape{} leads most clearly when the delay changes during a request. \capes{} is \E{x:S:sync:dyn:rng} faster than Sync-4, and \cape{} is the fastest of all nine methods on every pair: \capes{} outruns the hindsight-optimal fixed window by \E{gemma3:dyn:S:best:sp} \E{gemma3:dyn:S:best:spci} on Gemma-3, \E{llama:dyn:S:best:sp} \E{llama:dyn:S:best:spci} on Llama and \E{qwen:dyn:S:best:sp} \E{qwen:dyn:S:best:spci} on Qwen, and \capee{} is the fastest method on Gemma-2. Against PEARL, calibrated for this very condition, \capes{} is \E{x:S:pearl:dyn:rng} faster. A fixed window, or a draft length calibrated for one delay, is right for only part of a request; \cape{} re-plans every round from the round trips it has just observed. Within the same dynamic requests, \capes{} drafts \E{gemma3:dyn100:S:h} lookahead tokens on average in the 100\,ms phases and \E{gemma3:dyn2:S:h} in the 2\,ms phases on Gemma-3 (\E{llama:dyn100:S:h} and \E{llama:dyn2:S:h} on Llama, \E{qwen:dyn100:S:h} and \E{qwen:dyn2:S:h} on Qwen, \E{gemma2:dyn100:S:h} and \E{gemma2:dyn2:S:h} on Gemma-2), while its fresh window stays at one to three tokens.
 
-The pipelined systems show why per-condition calibration is not enough. PEARL and PipeSD are calibrated for the dynamic condition itself, yet a single draft length or threshold pair must serve both the 2\,ms and the 100\,ms phases of every request. Synchronous methods leave the device idle during every round trip: \capes{} is \E{x:sync:dyn:rng} faster than Sync-4 and \E{x:hf:dyn:rng} faster than HF assisted generation.
+\emph{Fixed delays.} At 100\,ms, where synchronous decoding idles longest, \capes{} is \E{x:S:sync:high:rng} faster than Sync-4 and the fastest method on Gemma-3, Llama and Qwen. At 2\,ms it is \E{x:S:sync:low:rng} faster, and the fastest method on Qwen.
 
-\begin{table}[t]
-\centering
-\caption{Fixed delays: throughput change (\%) relative to the best fixed window of each pair and delay (first row, chosen in hindsight).}
-\label{tab:fixed}
-\footnotesize
-\setlength{\tabcolsep}{2.2pt}
-\input{tables/fixed}
-\end{table}
-
-\subsection{Fixed delays: matching a hindsight oracle without knowing the delay}
+\subsection{One configuration for every pair and delay}
 \label{sec:fixed}
-Table~\ref{tab:fixed} shows why no fixed window can be configured in advance: the best fixed window is Fixed-2, Fixed-4 or Fixed-8 depending on the pair and the delay. \capes{} needs no such choice. It beats the hindsight-optimal fixed window in \E{x:wins} of the 12 pair--delay settings, including all four pairs at 100\,ms (by \E{x:high:S:sp:rng}). At 100\,ms it is the fastest of all ten methods on Llama, Qwen and Gemma-3, and on Qwen it is also \E{x:qwen:high:S:abssv} more energy-efficient than the best fixed window.
+The best fixed window depends on both the pair and the delay (Table~\ref{tab:speedup}, $^\dagger$): its $\gamma$ at 2\,ms, 100\,ms and under dynamic delay is \E{x:best:cells}. A window fixed in advance therefore fails somewhere. PicoSpec-2 gains nothing over Sync-4 on Gemma-3 at 100\,ms (\E{x:g2:sync:worst}), and PicoSpec-4 and PicoSpec-8 are slower than Sync-4 on Gemma-2 at 2\,ms (\E{x:g4:sync:worst} and \E{x:g8:sync:worst}).
 
-At 2\,ms the round trip is short and every well-configured pipeline is close to its ceiling: \capes{} stays within a few percent of the best fixed window on every pair while the calibration-free alternatives Sync-4 and HF assisted generation lose \E{x:gemmatwo:low:Sync:abssp}--\E{x:gemmathree:low:HF:abssp}. Methods tuned specifically for this short round trip, such as PEARL with its calibrated draft length, are competitive here; their calibration does not carry over when the delay grows or varies (Table~\ref{tab:dynamic}). The heavy Gemma-2 draft (2B parameters) is the regime in which short windows are optimal at every delay; even there \capes{} beats the best fixed window at all three conditions.
+\capes{} needs no such choice. With one configuration it beats the hindsight-optimal fixed window in \E{x:S:best:wins} of the 12 settings, \E{x:S:best:sig} of them with intervals above zero and by up to \E{x:S:best:top}. In the remaining four it stays within \E{x:S:regret}. These are draft-bound settings: 2\,ms on Gemma-3 and Llama, and 100\,ms and dynamic delay with the 2B Gemma-2 draft. In them the draft model, not the round trip, sets the pace, so every pipeline runs close to the same ceiling. The last column of Table~\ref{tab:speedup} makes the difference explicit. Measured against the fastest method of each setting, \capes{} never falls more than \E{x:S:regret} behind, whereas every baseline falls at least \E{x:base:regret} behind in some setting: PEARL by \E{x:pearl:regret}, PicoSpec-4 by \E{x:g4:regret}, PicoSpec-8 by \E{x:g8:regret} and PicoSpec-2 by \E{x:g2:regret}.
+
+PEARL is the strongest baseline. Calibrated for each pair and delay, it is the fastest method at 2\,ms on Llama and Gemma-2, whose 1B and 2B drafts make the loop draft-bound and favor its short calibrated draft length. A single draft length is also its limit: with the light Gemma-3 and Qwen drafts at 2\,ms it trails the best fixed window by \E{gemma3:low:pearl:best:spm} and \E{qwen:low:pearl:best:spm}, and under dynamic delay, where one length must serve both delays, it trails \capes{} by \E{x:S:pearl:dyn:rng} on every pair. PipeSD and HF assisted generation are slower than \capes{} in every setting.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/frontier.pdf}
+\caption{Throughput against device energy per token under time-varying delay (2/100\,ms switching). The gray line is the speed--energy frontier. \cape{} forms its fast end on every pair, and \capee{} lies on it on every pair.}
+\label{fig:frontier}
+\end{figure}
 
 \subsection{One weight selects the operating point}
 \label{sec:frontier}
-Table~\ref{tab:dynamic} also places every method in the speed--energy plane. Raising $w$ from 0 to 0.5 moves \cape{} along the frontier instead of off it: \capee{} gives up a little throughput relative to \capes{} and in return cuts J/token by \E{x:dyn:E:sv:rng} relative to the best fixed window, because the energy price shortens the lookahead whenever acceptance makes a hit unlikely. A deployment chooses its operating point with this single number and keeps it across model pairs and networks.
+Lookahead converts the idle round trip of synchronous decoding into draft work: a pipeline spends device energy to buy speed, and what matters is how much energy each unit of speed costs. Synchronous decoding keeps the draft server idle during every round trip, which makes it frugal on the heavier drafts at the price of speed. Fig.~\ref{fig:frontier} places every method in the speed--energy plane under time-varying delay. \cape{} forms the fast end of the frontier on all four pairs, and \capee{} lies on the frontier on every pair. \capee{} runs at the speed of the hindsight-best fixed window (\E{x:E:best:dyn:sp:rng} faster) while using \E{gemma3:dyn:E:best:svm} \E{gemma3:dyn:E:best:svci} less energy per token on Gemma-3, \E{llama:dyn:E:best:svm} \E{llama:dyn:E:best:svci} on Llama, \E{qwen:dyn:E:best:svm} \E{qwen:dyn:E:best:svci} on Qwen and \E{gemma2:dyn:E:best:svm} on Gemma-2. On Gemma-3 it is both faster and more energy-efficient than synchronous decoding at every delay: \E{gemma3:low:E:sync:spm}, \E{gemma3:high:E:sync:spm} and \E{gemma3:dyn:E:sync:spm} faster with \E{gemma3:low:E:sync:svm}, \E{gemma3:high:E:sync:svm} and \E{gemma3:dyn:E:sync:svm} less energy per token at 2\,ms, 100\,ms and dynamic delay.
+
+The saving holds across all conditions. Against PicoSpec at its default window, \capee{} uses \E{x:E:g4:sv:rng} less energy per token in all twelve settings, each interval above zero, and is faster in \E{x:E:g4:faster} of them. The energy price removes discarded work: \capee{} discards fewer draft tokens than PicoSpec-4 in every setting (\E{gemma3:dyn:E:disc} against \E{gemma3:dyn:g4:disc} per 100 output tokens on Gemma-3 under dynamic delay), because it shortens the lookahead whenever acceptance makes a hit unlikely: under dynamic delay to \E{gemma2:dyn:E:h}--\E{qwen:dyn:E:h} tokens on average, against 5 for PicoSpec-4.
+
+\begin{table}[t]
+\centering
+\caption{Energy weight $w$ on Gemma-3 under time-varying delay (\E{w:n} prompts, one session): throughput, device energy per token and change relative to $w=0$ with 95\% intervals.}
+\label{tab:weights}
+\footnotesize
+\setlength{\tabcolsep}{2.6pt}
+\input{tables/weights}
+\end{table}
+
+Table~\ref{tab:weights} sweeps the weight. Throughput and energy per token fall together and monotonically as $w$ grows, so one number moves \cape{} along a smooth speed--energy curve. The first step is the most efficient: $w=0.25$ cuts energy per token by \E{w:w025:S:svm} at a throughput cost of \E{w:w025:S:spm}. A deployment chooses its operating point with this single number and keeps it across model pairs and networks.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/sweep.pdf}
-\caption{Throughput against the added delay per verification (Gemma-3, the same 30 prompts at every delay). The best fixed window moves from Fixed-2 to Fixed-4 to Fixed-8 as the delay grows; \capes{} follows the upper envelope without being told the delay, and is faster than PEARL at every delay.}
+\caption{Throughput against the added delay per verification (Gemma-3, the same 30 prompts at every delay; all methods of a delay run interleaved in one session). The best fixed window moves from PicoSpec-4 to PicoSpec-8 as the delay grows; \capes{} follows the upper envelope without being told the delay and is faster than PEARL at every delay.}
 \label{fig:sweep}
 \end{figure}
 
 \subsection{Across the delay range}
 \label{sec:sweep}
-Fig.~\ref{fig:sweep} extends the two fixed delays to six, from 2 to 200\,ms, on the Gemma-3 pair. No fixed window stays best: Fixed-2 wins at 2\,ms, Fixed-4 at 10 and 25\,ms and Fixed-8 from 50\,ms on. \capes{} follows this envelope with one configuration. It is within \E{s:low:S:sub} of the best fixed window at 2\,ms, matches it at 10\,ms (\E{s:d10:S}) and is faster from 25\,ms on: by \E{s:d25:S} at 25\,ms, \E{s:d50:S} \E{s:d50:S:ci} at 50\,ms, \E{s:high:S:sub} at 100\,ms and \E{s:d200:S} at 200\,ms. Its largest gains fall exactly where the best window changes, between 50 and 100\,ms: there \cape{} combines short fresh windows after misses with long lookahead after hits, which no single window can express. Over the four added delays, \capes{} also uses \E{s:pooled:S:g4:sv} \E{s:pooled:S:g4:svci} less energy per token than Fixed-4 and \E{s:pooled:S:g8:sv} less than Fixed-8.
+Fig.~\ref{fig:sweep} extends the two fixed delays to six, from 2 to 200\,ms, on the Gemma-3 pair. No fixed window stays best: PicoSpec-4 wins up to 25\,ms and PicoSpec-8 from 50\,ms on. \capes{} follows this envelope with one configuration. It matches the best fixed window at 2 and 10\,ms (\E{sw:d2:S:best:sp} and \E{sw:d10:S:best:sp}) and is faster from 25\,ms on: by \E{sw:d25:S:best:sp} \E{sw:d25:S:best:spci} at 25\,ms, \E{sw:d50:S:best:sp} at 50\,ms, \E{sw:d100:S:best:sp} \E{sw:d100:S:best:spci} at 100\,ms and \E{sw:d200:S:best:sp} at 200\,ms. Its gains are largest from 25 to 100\,ms, around the delay at which the best window switches: there \cape{} combines short fresh windows after misses with long lookahead after hits, which no single window can express. At every delay, \capes{} also uses less energy per token than the best fixed window (\E{sw:S:best:sv:rng}).
 
-PEARL, whose draft length is recalibrated for every delay, is slower than \capes{} at all six delays; at 25\,ms its calibrated length is too short and it falls \E{s:d25:pearl} behind the best fixed window. The lookahead cap of $\Gamma+1=9$ tokens is ample: at 200\,ms, where PEARL drafts 12 tokens per block, \capes{} is still the fastest method.
+PEARL, whose draft length is recalibrated for every delay, is slower than \capes{} at all six delays, by \E{sw:S:pearl:rng}. The lookahead cap of $\Gamma+1=9$ tokens is ample: at 200\,ms, where PEARL drafts 12 tokens per block, \capes{} is still the fastest method.
 
 \subsection{Where the gains come from}
 \label{sec:why}
 \begin{table}[t]
 \centering
-\caption{Ablation of \capes{} on Gemma-3 (30 prompts; 2\,ms, 100\,ms and dynamic pooled): change relative to Fixed-4 with 95\% prompt-cluster bootstrap intervals.}
+\caption{Ablation of \capes{} on Gemma-3 (30 prompts, one session). Each row adds one component to the previous one: PicoSpec-4 drafts 4 fresh tokens and a lookahead of 5; adaptive lookahead keeps the fresh window at 4.}
 \label{tab:ablation}
 \footnotesize
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}lll@{}}
-\toprule
-Variant & Throughput (\%) & J/token saving (\%)\\
-\midrule
-Adaptive lookahead only (fresh window 4) & $+5.8$ [3.8, 9.0] & $-1.7$ [$-$2.7, $-$0.2]\\
-Full controller, median round trip & $+7.9$ [5.5, 10.7] & $+5.5$ [3.2, 7.9]\\
-Full controller, distributional (\capes{}) & $+6.9$ [4.5, 9.9] & $+8.6$ [5.1, 11.5]\\
-\bottomrule
-\end{tabular}
+\setlength{\tabcolsep}{2.4pt}
+\input{tables/ablation}
 \end{table}
 
-Table~\ref{tab:ablation} isolates the components of \capes{} on the Gemma-3 pair, and each has a distinct job. \emph{Adaptive lookahead delivers the speed.} Keeping the fresh window at four tokens and letting only the lookahead follow the round trip already raises throughput by \E{a:fresh4:sp} \E{a:fresh4:spci} over Fixed-4, and by \E{a:fresh4:high:sp} at 100\,ms, where a complete-block lookahead leaves most of the round trip unused. \emph{The adaptive fresh window delivers the energy.} Choosing the fresh window as well keeps the speed (a further \E{a:fresh:sp}, within noise) and cuts J/token by another \E{a:fresh:sv} \E{a:fresh:svci}, and by \E{a:fresh:low:sv} at 2\,ms, where \cape{} drafts short blocks instead of speculating four tokens at a time. \emph{The distributional round-trip estimate prices jitter.} Compared with a median-only estimate, it runs at the same speed (within \E{a:dist:sp}) and lowers J/token by \E{a:dist:sv} \E{a:dist:svci}, and by \E{a:dist:high:sv} at 100\,ms: on a jittery path it stops buying lookahead that the shorter round trips cannot hide. The full controller is \E{a:full:sp} \E{a:full:spci} faster than Fixed-4 and \E{a:full:sv} \E{a:full:svci} more energy-efficient.
+Table~\ref{tab:ablation} builds \capes{} from PicoSpec-4 one component at a time, and each component has a distinct job. \emph{Adaptive lookahead delivers the speed.} Keeping the fresh window at four tokens and letting only the lookahead follow the round trip raises throughput by \E{ab:high:la:g4:sp} \E{ab:high:la:g4:spci} at 100\,ms and \E{ab:dyn:la:g4:sp} \E{ab:dyn:la:g4:spci} under dynamic delay, where a complete-block lookahead leaves much of the round trip unused. \emph{The adaptive fresh window delivers the energy.} Choosing the fresh window as well keeps the speed (\E{ab:pool:S:la:sp} over the three conditions) and cuts energy per token by \E{ab:low:S:la:svm} \E{ab:low:S:la:svci} at 2\,ms and \E{ab:dyn:S:la:svm} \E{ab:dyn:S:la:svci} under dynamic delay, because \cape{} drafts short blocks on the critical path instead of speculating four tokens at a time. Over the three conditions, the full controller is \E{ab:pool:S:g4:spm} \E{ab:pool:S:g4:spci} faster than PicoSpec-4 and uses \E{ab:pool:S:g4:svm} \E{ab:pool:S:g4:svci} less energy per token.
 
-The text matters as much as the network: on Gemma-3, per-token acceptance ranges from \E{acc:gemmathree:mtbench} on MT-Bench to \E{acc:gemmathree:humaneval} on HumanEval, so no single window suits every workload, and \cape{} estimates acceptance online in each state. Short lookahead also limits waiting for background drafts that a rejection has made useless: at 2\,ms such waiting takes \E{wait:capes:low} of the wall time of \capes{}, against \E{wait:pico:low} for PicoSpec, which interrupts these drafts, and \E{wait:fixed4:low} for Fixed-4. Interruption is orthogonal to the choice of windows and composes with \cape{}.
-
+The text matters as much as the network: on Gemma-3, the per-token acceptance of the draft ranges from \E{acc:gemma3:mtbench} on MT-Bench to \E{acc:gemma3:humaneval} on HumanEval, so no single window suits every workload. \cape{} estimates acceptance online in each state, and its windows follow the text as well as the round trip.
